@@ -1,0 +1,25 @@
+
+
+TODOs:
+1. Write a unit test
+    => VMMemoryManager, VMBytecodeInterpreter
+2. Implement following instructions
+    => Vmcall, Vmxthrow
+3. Implement VM-thru-host interface
+4. Define byte order rules for stack push/pop operation
+   (see the following code; result is not always the same)
+
+    initarg     ; initialize argument table (optional)
+
+    ldimm.i4 0x12345678
+    arg 4       ; arg #0, size 4
+
+    call $func  ; implicitly build shadow frame
+    ...
+
+func:
+    ldargp 0    ; load pointer to arg #0 (passed by the caller)
+    ldvp.x1     ; read first byte of arg #1
+                ; (pushes 0x78 in little-endian, 0x12 in big-endian)
+
+    ...
