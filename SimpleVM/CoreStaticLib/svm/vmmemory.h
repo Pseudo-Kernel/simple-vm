@@ -37,7 +37,7 @@ namespace VM_NAMESPACE
         uint64_t Size;
     };
 
-    class VMMemoryManager //: public MemoryManager
+    class VMMemoryManager
     {
     public:
         struct Options

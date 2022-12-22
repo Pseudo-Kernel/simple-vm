@@ -89,7 +89,7 @@ namespace VM_NAMESPACE
     bool VMMemoryManager::Allocate(uint64_t Address, size_t Size, MemoryType Type, intptr_t Tag, uint32_t Options, uint64_t& ResultAddress)
     {
         return Reclaim(MemoryType::Freed, Address, Size, Type, Tag,
-            Options & Options::UsePreferredAddress, ResultAddress);
+            Options | Options::UsePreferredMemoryType, ResultAddress);
     }
 
     bool VMMemoryManager::Query(uint64_t Address, MemoryInfo& Info)

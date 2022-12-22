@@ -2,7 +2,7 @@
 
 TODOs:
 1. Write a unit test
-    => VMMemoryManager, VMBytecodeInterpreter
+    => VMBytecodeInterpreter
 2. Implement following instructions
     => Vmcall, Vmxthrow
 3. Implement VM-thru-host interface
