@@ -1,4 +1,120 @@
 
+/*
+ * VM instructions table (inst_table.inc)
+ */
+
+/*
+ * 1. data types and binary representations
+ * this section describes data types and binary representations.
+ * table 1-a and 1-b shows binary representation and minimum/maximum values.
+ * table 1-c is for integral data type only; it shows result and 
+ * overflow/underflow behavior for various integer operations.
+ * 
+ *
+ * table 1-a. data types and binary representations
+ * +------+-------------------------+--------+-----------------------+
+ * | type |             description |   size | binary representation |
+ * +------+-------------------------+--------+-----------------------+
+ * |   i1 |    8-bit signed integer |  8-bit |        2's complement |
+ * |   i2 |   16-bit signed integer | 16-bit |        2's complement |
+ * |   i4 |   32-bit signed integer | 32-bit |        2's complement |
+ * |   i8 |   64-bit signed integer | 64-bit |        2's complement |
+ * |   u1 |  8-bit unsigned integer |  8-bit |                     - |
+ * |   u2 | 16-bit unsigned integer | 16-bit |                     - |
+ * |   u4 | 32-bit unsigned integer | 32-bit |                     - |
+ * |   u8 | 64-bit unsigned integer | 64-bit |                     - |
+ * |   f4 |   32-bit floating point | 32-bit |   IEEE 754 (binary32) |
+ * |   f8 |   64-bit floating point | 64-bit |   IEEE 754 (binary64) |
+ * +------+-------------------------+--------+-----------------------+
+ * [!] note that binary representation does not specify byte order.
+ *     assuming the byte order is discouraged because byte order may vary 
+ *     depending on the implementation (or target architecture); it is not fixed.
+ *
+ * table 1-b. data types and min/max value
+ * +------+-------------------------+-------------------------+-------------------+-------------------+
+ * | type |                     min |                     max | min (binary form) | max (binary form) |
+ * +------+-------------------------+-------------------------+-------------------+-------------------+
+ * |   i1 |                   -2**7 |               +2**7 - 1 |                80 |                7F |
+ * |   i2 |                  -2**15 |              +2**15 - 1 |              8000 |              7FFF |
+ * |   i4 |                  -2**31 |              +2**31 - 1 |          80000000 |          7FFFFFFF |
+ * |   i8 |                  -2**63 |              +2**63 - 1 |  8000000000000000 |  7FFFFFFFFFFFFFFF |
+ * |   u1 |                       0 |               +2**8 - 1 |                00 |                FF |
+ * |   u2 |                       0 |              +2**16 - 1 |              0000 |              FFFF |
+ * |   u4 |                       0 |              +2**32 - 1 |          00000000 |          FFFFFFFF |
+ * |   u8 |                       0 |              +2**64 - 1 |  0000000000000000 |  FFFFFFFFFFFFFFFF |
+ * |   f4 |  -2**127 * (2 - 2**-23) |  +2**127 * (2 - 2**-23) |          FF7FFFFF |          7F7FFFFF |
+ * |   f8 | -2**1023 * (2 - 2**-52) | +2**1023 * (2 - 2**-52) |  FFEFFFFFFFFFFFFF |  7FEFFFFFFFFFFFFF |
+ * +------+-------------------------+-------------------------+-------------------+-------------------+
+ *
+ * table 1-c. results of integer operations and overflow/underflow behavior
+ * +----------+------------+----------------+------------------------------------------------------------+--------------------------+
+ * |     type | operations |    description |                                                     result | over(under)flow behavior |
+ * +----------+------------+----------------+------------------------------------------------------------+--------------------------+
+ * | i1/2/4/8 |        add |       addition |                                          (a + b) and u_max |              wrap around |
+ * | i1/2/4/8 |        sub |    subtraction |                                          (a - b) and u_max |              wrap around |
+ * | i1/2/4/8 |        shl |     shift left |                                       (a * 2**b) and u_max |              wrap around |
+ * | i1/2/4/8 |        shr |    shift right | floor(abs(a) / 2**b) or (msb(a) * (2**(N-1) - 2**(N-1-b))) |              wrap around |
+ * | i1/2/4/8 |        mul | multiplication |                   sgn(a*b) * ((abs(a) * abs(b)) and u_max) |              wrap around |
+ * | i1/2/4/8 |        div |       division |              sgn(a*b) * (floor(abs(a) / abs(b)) and u_max) |              wrap around |
+ * | i1/2/4/8 |        mod |  get remainder |                             sgn(a*b) * (abs(a) rem abs(b)) |              wrap around |
+ * | u1/2/4/8 |        add |       addition |                                           same as i1/2/4/8 |              wrap around |
+ * | u1/2/4/8 |        sub |    subtraction |                                           same as i1/2/4/8 |              wrap around |
+ * | u1/2/4/8 |        shl |     shift left |                                           same as i1/2/4/8 |              wrap around |
+ * | u1/2/4/8 |        shr |    shift right |                                            floor(a / 2**b) | does not over(under)flow |
+ * | u1/2/4/8 |        mul | multiplication |                                          (a * b) and u_max |              wrap around |
+ * | u1/2/4/8 |        div |       division |                                               floor(a / b) | does not over(under)flow |
+ * | u1/2/4/8 |        mod |  get remainder |                                                    a rem b | does not over(under)flow |
+ * +----------+------------+----------------+------------------------------------------------------------+--------------------------+
+ * [1] x**y: x to the power of y.
+ * [2] u_max: maximum unsigned value of corresponding type (same as 2**N - 1).
+ * [3] N: maximum bit size of corresponding type.
+ * [4] abs(x): returns absolute value of signed integer x.
+ * [5] sgn(x): returns "signedness" of signed integer x (x/|x| if x != 0, 0 otherwise).
+ * [6] floor(x): returns integer part of x.
+ * [7] msb(x): returns most significant bit of x.
+ * [8] x rem y: get remainder (where x is dividend, y is divisor).
+ * [*] the result is guaranteed to wrap around for all integer operations.
+ *     (for example, 127 + 1 = -128 for 8-bit signed integer)
+ *
+ */
+
+
+/*
+ * 2. VM instructions
+ * this section describes instructions of VM.
+ * each instruction is described as follows:
+ * 1) expression: represents the mnemonic string for given instruction.
+ *    for example, "add.<i4|i8>" represents 2 instructions: "add.i4", "add.i8".
+ * 2) operation: describes how the instruction is operated.
+ * 3) stack changes: describes the stack state ("<before_state> -> <after_state>").
+ *      where <before_state> represents the stack state before execution,
+ *            <after_state> represents after state.
+ *      each stack state is represented as "e[1], e[2], ..., e[N]"
+ *      stack elements are separated by comma; e[1], e[2], and e[N] are all elements.
+ *      stack pointer always points the rightmost element. stack pointer points e[N].
+ *      expression "..." can contain zero or more elements. it is used to omit an expression.
+ *      ("e[1], e[2], e[3]" can be represented to "..., e[3]" by replacing "e[1], e[2]" with "...")
+ *    for example, "..., v1, v2 -> ..., v1 + v2" describes
+ *      1. stack pointer was pointing v2 (before state: "..., v1, v2")
+ *      2. v2 and v1 are popped and result of v1 + v2 is pushed (after state: "..., v1 + v2")
+ *    
+ * 4) exceptions: describes the exception list;
+ *    see table 2-a for exception lists and conditions.
+ *
+ * table 2-a. VM exceptions
+ * +-----------+-----------------------------+--------------------------------------------------------------+
+ * | exception |                 description |                                          exception condition |
+ * +-----------+-----------------------------+--------------------------------------------------------------+
+ * |      #STK |             stack exception |      an attempt was made to access an invalid stack address. |
+ * |      #DIV |  integer division exception |  an attempt was made to divide by zero in integer operation. |
+ * |      #INV | invalid operation exception |    an attempt was made to perform operation that is invalid. |
+ * |      #ACC |    invalid access exception |            an attempt was made to access an invalid address. |
+ * |       #BP |        breakpoint exception |                                 bp instruction was executed. |
+ * +-----------+-----------------------------+--------------------------------------------------------------+
+ *
+ *
+ */
+
 
 /*
  * add.<type> - add two values

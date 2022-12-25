@@ -1,12 +1,13 @@
 
 
 TODOs:
-1. Write a unit test
+1. Implement integer class for integer calculation (without UB)
+2. Write a unit test
     => VMBytecodeInterpreter
-2. Implement following instructions
+3. Implement following instructions
     => Vmcall, Vmxthrow
-3. Implement VM-thru-host interface
-4. Define byte order rules for stack push/pop operation
+4. Implement VM-thru-host interface
+5. Define byte order rules for stack push/pop operation
    (see the following code; result is not always the same)
 
     initarg     ; initialize argument table (optional)

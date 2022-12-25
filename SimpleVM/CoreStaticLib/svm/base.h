@@ -2,8 +2,61 @@
 
 #include "arch.h"
 
+#include <numeric>
+#include <cstdint>
+#include <climits>
+
+#ifdef min
+#undef min
+#endif
+
+#ifdef max
+#undef max
+#endif
+
+
 namespace Base
 {
+    static_assert(
+        static_cast<uint8_t>(static_cast<int8_t>(-1)) == 0xff && 
+        static_cast<uint16_t>(static_cast<int16_t>(-1)) == 0xffff &&
+        static_cast<uint32_t>(static_cast<int32_t>(-1)) == 0xffffffff &&
+        static_cast<uint64_t>(static_cast<int64_t>(-1)) == 0xffffffff'ffffffff,
+        "unexpected signed integer representation (requires two's complement)");
+
+    static_assert(
+        static_cast<uint8_t>(std::numeric_limits<int8_t>::min()) == 0x80 &&
+        static_cast<uint16_t>(std::numeric_limits<int16_t>::min()) == 0x8000 &&
+        static_cast<uint32_t>(std::numeric_limits<int32_t>::min()) == 0x80000000 &&
+        static_cast<uint64_t>(std::numeric_limits<int64_t>::min()) == 0x80000000'00000000,
+        "unexpected integer limit");
+
+    static_assert(
+        static_cast<uint8_t>(std::numeric_limits<int8_t>::max()) == 0x7f &&
+        static_cast<uint16_t>(std::numeric_limits<int16_t>::max()) == 0x7fff &&
+        static_cast<uint32_t>(std::numeric_limits<int32_t>::max()) == 0x7fffffff &&
+        static_cast<uint64_t>(std::numeric_limits<int64_t>::max()) == 0x7fffffff'ffffffff,
+        "unexpected integer limit");
+
+    static_assert(
+        std::numeric_limits<uint8_t>::min() == 0 &&
+        std::numeric_limits<uint16_t>::min() == 0 &&
+        std::numeric_limits<uint32_t>::min() == 0 &&
+        std::numeric_limits<uint64_t>::min() == 0,
+        "unexpected integer limit");
+
+    static_assert(
+        std::numeric_limits<uint8_t>::max() == 0xff &&
+        std::numeric_limits<uint16_t>::max() == 0xffff &&
+        std::numeric_limits<uint32_t>::max() == 0xffffffff &&
+        std::numeric_limits<uint64_t>::max() == 0xffffffff'ffffffff,
+        "unexpected integer limit");
+
+    static_assert(
+        std::numeric_limits<float>::is_iec559 &&
+        std::numeric_limits<double>::is_iec559,
+        "unexpected floating point representation (requires IEEE 754)");
+
     static_assert(
         sizeof(float) == sizeof(int32_t),
         "unexpected size of float");
