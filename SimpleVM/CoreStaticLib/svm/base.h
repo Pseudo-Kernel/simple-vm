@@ -548,13 +548,13 @@ namespace Base
         typename = std::enable_if_t<std::is_integral<T>::value>>
     constexpr inline bool IsInRange2(T Start, T Count, T Test)
     {
-		#pragma message("carefully check overflow for signed type because signed overflow is UB")
-		//using UnsignedType = std::make_unsigned_t<T>;
-		//UnsignedType UnsignedStart = Start;
-		//UnsignedType UnsignedEnd = Start + Count - 1;
-		//
-		//if (End < Start)
-		//	return false;
+        #pragma message("carefully check overflow for signed type because signed overflow is UB")
+        //using UnsignedType = std::make_unsigned_t<T>;
+        //UnsignedType UnsignedStart = Start;
+        //UnsignedType UnsignedEnd = Start + Count - 1;
+        //
+        //if (End < Start)
+        //	return false;
 
         return IsInRange(Start, Start + Count - 1, Test);
     }

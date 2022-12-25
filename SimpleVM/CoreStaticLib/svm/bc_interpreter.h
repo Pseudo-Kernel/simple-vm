@@ -34,6 +34,8 @@ namespace VM_NAMESPACE
             size_t FetchSize = 0;
             int StepCount = 0;
 
+            printf(" =========== VM Execute (Step %10d) =========== \n", Count);
+
             do
             {
                 if (StepCount >= Count)
@@ -1041,6 +1043,8 @@ namespace VM_NAMESPACE
                 StepCount++;
             }
             while (FetchSize);
+
+            printf(" =========== VM Returned (Step %10d) =========== \n\n", StepCount);
 
             return StepCount;
         }

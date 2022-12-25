@@ -3,11 +3,14 @@
 #include "CppUnitTest.h"
 
 #include <stdarg.h>
+#include <conio.h>
+#include <windows.h>
 #include "../CoreStaticLib/svm/arch.h"
 #include "../CoreStaticLib/svm/base.h"
 #include "../CoreStaticLib/svm/vmbase.h"
 #include "../CoreStaticLib/svm/vmmemory.h"
 #include "../CoreStaticLib/svm/bc_interpreter.h"
+#include "../CoreStaticLib/svm/bc_emitter.h"
 
 #pragma comment(lib, "../CoreStaticLib.lib")
 
@@ -889,6 +892,211 @@ namespace CoreUnitTest
     private:
     };
 
+    TEST_CLASS(VMInterpreterTest)
+    {
+    public:
+        struct GuestMemory
+        {
+            GuestMemory() :
+                Address(), Size() {}
+            GuestMemory(uint64_t Address, uint64_t Size) :
+                Address(Address), Size(Size) {}
+
+            uint64_t Address;
+            uint64_t Size;
+        };
+
+        static void OpenConsole()
+        {
+            for (int i = 0; i < 5; i++)
+            {
+                if (::AllocConsole())
+                    break;
+
+                ::FreeConsole();
+            }
+
+            HWND hWndConsole = ::GetConsoleWindow();
+
+            ShowWindow(hWndConsole, SW_SHOW);
+            ShowWindow(hWndConsole, SW_SHOW); // once again
+
+            freopen_s(reinterpret_cast<FILE**>(stdin), "CONIN", "r", stdin);
+            freopen_s(reinterpret_cast<FILE**>(stdout), "CONOUT$", "w", stdout);
+            freopen_s(reinterpret_cast<FILE**>(stderr), "CONOUT$", "w", stderr);
+        }
+
+        static void HideConsole()
+        {
+            HWND hWndConsole = ::GetConsoleWindow();
+            ShowWindow(hWndConsole, SW_HIDE);
+        }
+
+        TEST_CLASS_INITIALIZE(ClassInitialize)
+        {
+            OpenConsole();
+        }
+
+        TEST_CLASS_CLEANUP(ClassCleanup)
+        {
+            printf("Test end.\nPress any key to continue\n");
+            _getch();
+
+            HideConsole();
+        }
+
+        TEST_METHOD_INITIALIZE(MethodInitialize)
+        {
+            struct AllocateParams
+            {
+                uint64_t PreferredAddress;
+                size_t Size;
+                MemoryType Type;
+                intptr_t Tag;
+                uint32_t Options;
+                uint64_t ResultAddress;
+                const char* Description;
+            };
+
+            AllocateParams AllocParamTable[] =
+            {
+                { 0x00001000, 0x0000f000, MemoryType::Bytecode, 0, VMMemoryManager::Options::UsePreferredAddress, 0, "GuestCode" },
+
+                { 0x00000000, 0x00010000, MemoryType::Stack, 0, 0, 0, "GuestStack" },
+                { 0x00000000, 0x00010000, MemoryType::Stack, 0, 0, 0, "GuestShadowStack" },
+                { 0x00000000, 0x00010000, MemoryType::Stack, 0, 0, 0, "GuestLocalVarStack" },
+                { 0x00000000, 0x00010000, MemoryType::Stack, 0, 0, 0, "GuestArgumentStack" },
+            };
+
+            AllocateParams& GuestCode = AllocParamTable[0];
+            AllocateParams& GuestStack = AllocParamTable[1];
+            AllocateParams& GuestShadowStack = AllocParamTable[2];
+            AllocateParams& GuestLocalVarStack = AllocParamTable[3];
+            AllocateParams& GuestArgumentStack = AllocParamTable[4];
+
+            //
+            // Allocate guest memory.
+            //
+
+            size_t MemorySize = 0x4000000;
+            auto VMM = std::make_unique<VMMemoryManager>(MemorySize);
+            auto& Memory = *VMM.get();
+
+            for (auto& it : AllocParamTable)
+            {
+                if (!Memory.Allocate(it.PreferredAddress, it.Size, it.Type, it.Tag, it.Options, it.ResultAddress))
+                {
+                    Logger::WriteMessage(Format(
+                        "failed to allocate guest memory for %s", it.Description).c_str());
+                    return;
+                }
+
+                // touch
+                Logger::WriteMessage(Format(
+                    "touching guest memory 0x%016llx - 0x%016llx (%s)",
+                    it.ResultAddress, it.ResultAddress + it.Size - 1, it.Description).c_str());
+                Memory.Fill(it.ResultAddress, it.Size, 0xdd);
+            }
+
+            //
+            // Setup initial VM context.
+            //
+
+            const int DefaultAlignment = sizeof(intptr_t); // Stack alignment
+
+            VMExecutionContext ExecutionContext{};
+            ExecutionContext.IP = GuestCode.ResultAddress;
+            ExecutionContext.XTableState = 0;
+            ExecutionContext.ExceptionState = ExceptionState::T::None;
+
+            ExecutionContext.Stack = VMStack(
+                Memory.HostAddress(GuestStack.ResultAddress), GuestStack.Size, DefaultAlignment);
+            ExecutionContext.ShadowStack = VMStack(
+                Memory.HostAddress(GuestShadowStack.ResultAddress), GuestShadowStack.Size, DefaultAlignment);
+            ExecutionContext.LocalVariableStack = VMStack(
+                Memory.HostAddress(GuestLocalVarStack.ResultAddress), GuestLocalVarStack.Size, DefaultAlignment);
+            ExecutionContext.ArgumentStack = VMStack(
+                Memory.HostAddress(GuestArgumentStack.ResultAddress), GuestArgumentStack.Size, DefaultAlignment);
+
+
+            GuestCode_ = GuestMemory(GuestCode.ResultAddress, GuestCode.Size);
+            GuestStack_ = GuestMemory(GuestStack.ResultAddress, GuestStack.Size);
+            GuestShadowStack_ = GuestMemory(GuestShadowStack.ResultAddress, GuestShadowStack.Size);
+            GuestLocalVarStack_ = GuestMemory(GuestLocalVarStack.ResultAddress, GuestLocalVarStack.Size);
+            GuestArgumentStack_ = GuestMemory(GuestArgumentStack.ResultAddress, GuestArgumentStack.Size);
+
+            ExecutionContext_ = ExecutionContext;
+            Memory_ = std::move(VMM);
+        }
+
+        TEST_METHOD_CLEANUP(MethodCleanup)
+        {
+            Memory_ = nullptr;
+            ExecutionContext_ = {};
+        }
+
+        TEST_METHOD(Instruction_Add)
+        {
+            VMBytecodeEmitter Emitter;
+            unsigned char *HostAddress = reinterpret_cast<unsigned char *>
+                (Memory_->HostAddress(ExecutionContext_.IP, 0x1000));
+            size_t ResultSize = 0;
+
+            bool Result = Emitter
+                .BeginEmit()
+                .Emit(Opcode::T::Ldimm_I4, Operand(OperandType::Imm32, 0x44332211))
+                .Emit(Opcode::T::Ldimm_I4, Operand(OperandType::Imm32, 0x11223344))
+                .Emit(Opcode::T::Add_I4)
+                .Emit(Opcode::T::Bp)
+                .EndEmit(HostAddress, GuestCode_.Size, &ResultSize);
+
+            Logger::WriteMessage(Format(
+                "EmitResult %d, size %zd\n", Result, ResultSize).c_str());
+
+            VMBytecodeInterpreter Interpreter(*Memory_.get());
+            Interpreter.Execute(ExecutionContext_, 9999999);
+
+            //
+            // FIXME: check the result
+            //  - ExecutionContext (IP, exception state, ...)
+            //  - calculation result (read from stack)
+            //
+        }
+
+        //TEST_METHOD(Instruction_Sub)
+        //{
+        //    VMBytecodeEmitter Emitter;
+        //    unsigned char* HostAddress = reinterpret_cast<unsigned char*>
+        //        (Memory_->HostAddress(ExecutionContext_.IP, 0x1000));
+        //    size_t ResultSize = 0;
+        //
+        //    bool Result = Emitter
+        //        .BeginEmit()
+        //        .Emit(Opcode::T::Ldimm_I4, Operand(OperandType::Imm32, 0x44332211))
+        //        .Emit(Opcode::T::Ldimm_I4, Operand(OperandType::Imm32, 0x11223344))
+        //        .Emit(Opcode::T::Sub_I4)
+        //        .Emit(Opcode::T::Bp)
+        //        .EndEmit(HostAddress, GuestCode_.Size, &ResultSize);
+        //
+        //    Logger::WriteMessage(Format(
+        //        "EmitResult %d, size %zd\n", Result, ResultSize).c_str());
+        //
+        //    VMBytecodeInterpreter Interpreter(*Memory_.get());
+        //    Interpreter.Execute(ExecutionContext_, 9999999);
+        //
+        //}
+
+    private:
+        std::unique_ptr<VMMemoryManager> Memory_;
+        VMExecutionContext ExecutionContext_;
+
+        GuestMemory GuestCode_;
+        GuestMemory GuestStack_;
+        GuestMemory GuestShadowStack_;
+        GuestMemory GuestLocalVarStack_;
+        GuestMemory GuestArgumentStack_;
+    };
+
     TEST_CLASS(MiscTest)
     {
     public:
@@ -940,7 +1148,6 @@ namespace CoreUnitTest
 
     private:
     };
-
 
 }
 
