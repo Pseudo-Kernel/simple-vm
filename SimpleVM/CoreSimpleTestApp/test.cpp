@@ -9,6 +9,7 @@
 #include <string>
 #include <algorithm>
 #include <atomic>
+#include <iostream>
 
 
 #pragma comment(lib, "../CoreStaticLib.lib")
@@ -17,7 +18,7 @@
 #include "../CoreStaticLib/svm/vmmemory.h"
 #include "../CoreStaticLib/svm/bc_emitter.h"
 #include "../CoreStaticLib/svm/bc_interpreter.h"
-
+#include "../CoreStaticLib/svm/integer.h"
 
 using namespace VM_NAMESPACE;
 
@@ -265,8 +266,90 @@ void test_vm_bytecode_emitter()
     [] {}();
 }
 
+void test_integer()
+{
+    Integer<uint8_t> nan;           // nan
+    Integer<uint8_t> a = 12;
+    Integer<uint8_t> b = a + 34;    // ok, 12 + 34 = 46
+    Integer<uint8_t> c = b * 2;     // ok, 92
+    Integer<uint8_t> d = b * 123;   // ok, 0x161a with overflow => 0x1a = 26
+    Integer<uint8_t> e = b / 0;     // nan (div/0)
+    Integer<uint8_t> f = b % 0;     // nan (div/0)
+    Integer<uint8_t> g = b & 0x0f;  // ok, b and 0x0f = 0x2e and 0x0f = 14
+    Integer<uint8_t> h = b | 0xf0;  // ok, b or 0xf0 = 0x2e or 0xf0 = 0xfe = 254
+    Integer<uint8_t> i = b ^ 0xff;  // ok, b xor 0xff = 0x2e xor 0xff = not 0x2e = 0xd1 = 209
+    Integer<uint8_t> j = b << 1;    // ok, b shl 1 = 0x2e shl 1 = 0x5c = 92
+    Integer<uint8_t> k = b << 4;    // ok, b shl 4 = 0x2e shl 4 = 0x2e0 with overflow => 0xe0 = 224
+    Integer<uint8_t> l = b << 8;    // ok, overflow => 0
+    Integer<uint8_t> m = b << 123;  // ok, overflow => 0
+    Integer<uint8_t> o = b >> 1;    // ok, b shr 1 = 0x2e shr 1 = 0x17 = 23
+    Integer<uint8_t> p = b >> 4;    // ok, b shr 4 = 0x2e shr 4 = 0x02 = 2
+    Integer<uint8_t> q = b >> 8;    // ok, 0
+    Integer<uint8_t> r = b >> 123;  // ok, 0
+    Integer<uint8_t> s = ~b;        // ok, not 0x2e = 0xd1 = 209
+    Integer<uint8_t> t = -b;        // ok, negate 0x2e = not 0x2e + 1 = 0xd2 = 210
+
+    Integer<uint8_t> nan2 = h + nan;    // nan
+
+    auto print = [](const auto& i, const char *s)
+    {
+        using TClass = std::remove_reference_t<decltype(i)>;
+
+        std::string flags;
+        if (i.State() & TClass::StateFlags::DivideByZero)
+        {
+            if (flags.length() > 0)
+                flags.append(" | ");
+            flags.append("Div/0");
+        }
+        if (i.State() & TClass::StateFlags::Overflow)
+        {
+            if (flags.length() > 0)
+                flags.append(" | ");
+            flags.append("Overflow");
+        }
+
+        std::cout
+            << "integer " << s << " -> "
+            << "is_nan: " << i.Invalid() << ", "
+            << "val: " << +i.Value() << ", "
+            << "flags: [ " << flags << " ]" << std::endl;
+    };
+
+    #define int_param(_s)     (_s), #_s
+
+    print(int_param(nan));
+    print(int_param(a));
+    print(int_param(b));
+    print(int_param(c));
+    print(int_param(d));
+    print(int_param(e));
+    print(int_param(f));
+    print(int_param(g));
+    print(int_param(h));
+    print(int_param(i));
+    print(int_param(j));
+    print(int_param(k));
+    print(int_param(l));
+    print(int_param(m));
+    print(int_param(o));
+    print(int_param(p));
+    print(int_param(q));
+    print(int_param(r));
+    print(int_param(s));
+    print(int_param(t));
+    print(int_param(nan2));
+
+    #undef int_param__
+}
+
 int main()
 {
+    test_integer();
+
+    return 0;
+
+
     test_vm_bytecode_emitter();
 
 

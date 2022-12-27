@@ -68,6 +68,9 @@
     <ClInclude Include="svm\vminst.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="svm\integer.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <None Include="svm\inst_table.inc">

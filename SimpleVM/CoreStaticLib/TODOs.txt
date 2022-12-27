@@ -2,6 +2,7 @@
 
 TODOs:
 1. Implement integer class for integer calculation (without UB)
+    => Integer<T> for unsigned types (OK), Integer<T> for signed types (not yet)
 2. Write a unit test
     => VMBytecodeInterpreter
 3. Implement following instructions

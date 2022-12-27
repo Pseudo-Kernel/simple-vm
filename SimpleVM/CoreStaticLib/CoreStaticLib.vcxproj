@@ -33,6 +33,7 @@
     <ClInclude Include="svm\Bitmap.h" />
     <ClInclude Include="svm\endianbytes.h" />
     <ClInclude Include="svm\inst_table.h" />
+    <ClInclude Include="svm\integer.h" />
     <ClInclude Include="svm\utility.h" />
     <ClInclude Include="svm\vmbase.h" />
     <ClInclude Include="svm\vminst.h" />
