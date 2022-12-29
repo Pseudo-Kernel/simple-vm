@@ -266,30 +266,107 @@ void test_vm_bytecode_emitter()
     [] {}();
 }
 
+template <
+    typename T,
+    std::enable_if_t<std::is_integral<T>::value && std::is_signed<T>::value, bool> = true>
+    class signed_test_int // signed
+{
+public:
+    signed_test_int(T val = 0) : val_(val) {}
+
+    T val() const
+    {
+        return val_;
+    }
+
+    void print() const
+    {
+        printf("val = %d\n", val_);
+    }
+
+    T val_;
+};
+
+template <
+    typename T,
+    std::enable_if_t<std::is_integral<T>::value&& std::is_unsigned<T>::value, bool> = true>
+    class unsigned_test_int // unsigned
+{
+public:
+    unsigned_test_int(T val = 0) : val_(val) {}
+
+    T val() const
+    {
+        return val_;
+    }
+
+    void print() const
+    {
+        printf("val = %d\n", val_);
+    }
+
+    T val_;
+};
+
+
+template <
+    typename T,
+    typename = std::enable_if_t<std::is_integral<T>::value, T>>
+    class real_test_int // default
+{
+public:
+    void test()
+    {
+        printf("default\n");
+    }
+};
+
+template <typename T>
+class real_test_int<T, typename std::enable_if_t<std::is_integral<T>::value && std::is_signed<T>::value, T>>
+{
+public:
+    void test()
+    {
+        printf("signed int specialization\n");
+    }
+};
+
+template <typename T>
+class real_test_int<T, typename std::enable_if_t<std::is_integral<T>::value&& std::is_unsigned<T>::value, T>>
+{
+public:
+    void test()
+    {
+        printf("unsigned int specialization\n");
+    }
+};
+
+
 void test_integer()
 {
-    Integer<uint8_t> nan;           // nan
-    Integer<uint8_t> a = 12;
-    Integer<uint8_t> b = a + 34;    // ok, 12 + 34 = 46
-    Integer<uint8_t> c = b * 2;     // ok, 92
-    Integer<uint8_t> d = b * 123;   // ok, 0x161a with overflow => 0x1a = 26
-    Integer<uint8_t> e = b / 0;     // nan (div/0)
-    Integer<uint8_t> f = b % 0;     // nan (div/0)
-    Integer<uint8_t> g = b & 0x0f;  // ok, b and 0x0f = 0x2e and 0x0f = 14
-    Integer<uint8_t> h = b | 0xf0;  // ok, b or 0xf0 = 0x2e or 0xf0 = 0xfe = 254
-    Integer<uint8_t> i = b ^ 0xff;  // ok, b xor 0xff = 0x2e xor 0xff = not 0x2e = 0xd1 = 209
-    Integer<uint8_t> j = b << 1;    // ok, b shl 1 = 0x2e shl 1 = 0x5c = 92
-    Integer<uint8_t> k = b << 4;    // ok, b shl 4 = 0x2e shl 4 = 0x2e0 with overflow => 0xe0 = 224
-    Integer<uint8_t> l = b << 8;    // ok, overflow => 0
-    Integer<uint8_t> m = b << 123;  // ok, overflow => 0
-    Integer<uint8_t> o = b >> 1;    // ok, b shr 1 = 0x2e shr 1 = 0x17 = 23
-    Integer<uint8_t> p = b >> 4;    // ok, b shr 4 = 0x2e shr 4 = 0x02 = 2
-    Integer<uint8_t> q = b >> 8;    // ok, 0
-    Integer<uint8_t> r = b >> 123;  // ok, 0
-    Integer<uint8_t> s = ~b;        // ok, not 0x2e = 0xd1 = 209
-    Integer<uint8_t> t = -b;        // ok, negate 0x2e = not 0x2e + 1 = 0xd2 = 210
+    using TInt = typename uint8_t;
+    Integer<TInt> nan;           // nan
+    Integer<TInt> a = 12;
+    Integer<TInt> b = a + 34;    // ok, 12 + 34 = 46
+    Integer<TInt> c = b * 2;     // ok, 92
+    Integer<TInt> d = b * 123;   // ok, 0x161a with overflow => 0x1a = 26
+    Integer<TInt> e = b / 0;     // nan (div/0)
+    Integer<TInt> f = b % 0;     // nan (div/0)
+    Integer<TInt> g = b & 0x0f;  // ok, b and 0x0f = 0x2e and 0x0f = 14
+    Integer<TInt> h = b | 0xf0;  // ok, b or 0xf0 = 0x2e or 0xf0 = 0xfe = 254
+    Integer<TInt> i = b ^ 0xff;  // ok, b xor 0xff = 0x2e xor 0xff = not 0x2e = 0xd1 = 209
+    Integer<TInt> j = b << 1;    // ok, b shl 1 = 0x2e shl 1 = 0x5c = 92
+    Integer<TInt> k = b << 4;    // ok, b shl 4 = 0x2e shl 4 = 0x2e0 with overflow => 0xe0 = 224
+    Integer<TInt> l = b << 8;    // ok, overflow => 0
+    Integer<TInt> m = b << 123;  // ok, overflow => 0
+    Integer<TInt> o = b >> 1;    // ok, b shr 1 = 0x2e shr 1 = 0x17 = 23
+    Integer<TInt> p = b >> 4;    // ok, b shr 4 = 0x2e shr 4 = 0x02 = 2
+    Integer<TInt> q = b >> 8;    // ok, 0
+    Integer<TInt> r = b >> 123;  // ok, 0
+    Integer<TInt> s = ~b;        // ok, not 0x2e = 0xd1 = 209
+    Integer<TInt> t = -b;        // ok, negate 0x2e = not 0x2e + 1 = 0xd2 = 210
 
-    Integer<uint8_t> nan2 = h + nan;    // nan
+    Integer<TInt> nan2 = h + nan;    // nan
 
     auto print = [](const auto& i, const char *s)
     {
