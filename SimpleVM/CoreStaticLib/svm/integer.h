@@ -297,6 +297,29 @@ public:
         return BaseInteger<T>(vr);
     }
 
+    bool Equal(const Integer<T> rhs, bool CompareInvalidState = false)
+    {
+        if (CompareInvalidState)
+        {
+            // not equal if invalid state is not same
+            if (Invalid() && Invalid() == rhs.Invalid())
+                return true; // both invalid
+            else if (Invalid() != rhs.Invalid())
+                return false; // one of {this, rhs} is invalid
+
+            // all valid here
+        }
+        else
+        {
+            // not equal if one of {this, rhs} is in invalid state
+            if (Invalid() || rhs.Invalid())
+                return false;
+        }
+
+        // compare values if all valid
+        return (Value() == rhs.Value());
+    }
+
     //
     // Operators.
     //
@@ -448,6 +471,11 @@ public:
     {
         *this = Subtract(1);
         return *this;
+    }
+
+    bool operator==(const Integer<T> rhs)
+    {
+        return Equal(rhs, false);
     }
 
     bool operator!() const = delete;
@@ -833,6 +861,29 @@ public:
         return BaseInteger<T>(vr);
     }
 
+    bool Equal(const Integer<T> rhs, bool CompareInvalidState = false)
+    {
+        if (CompareInvalidState)
+        {
+            // not equal if invalid state is not same
+            if (Invalid() && Invalid() == rhs.Invalid())
+                return true; // both invalid
+            else if (Invalid() != rhs.Invalid())
+                return false; // one of {this, rhs} is invalid
+
+            // all valid here
+        }
+        else
+        {
+            // not equal if one of {this, rhs} is in invalid state
+            if (Invalid() || rhs.Invalid())
+                return false;
+        }
+
+        // compare values if all valid
+        return (Value() == rhs.Value());
+    }
+
     //
     // Operators.
     //
@@ -984,6 +1035,11 @@ public:
     {
         *this = Subtract(1);
         return *this;
+    }
+
+    bool operator==(const Integer<T> rhs)
+    {
+        return Equal(rhs, false);
     }
 
     bool operator!() const = delete;
