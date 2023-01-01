@@ -9,6 +9,7 @@
 #include "../CoreStaticLib/svm/base.h"
 #include "../CoreStaticLib/svm/vmbase.h"
 #include "../CoreStaticLib/svm/vmmemory.h"
+#include "../CoreStaticLib/svm/integer.h"
 #include "../CoreStaticLib/svm/bc_interpreter.h"
 #include "../CoreStaticLib/svm/bc_emitter.h"
 
@@ -1095,6 +1096,1352 @@ namespace CoreUnitTest
         GuestMemory GuestShadowStack_;
         GuestMemory GuestLocalVarStack_;
         GuestMemory GuestArgumentStack_;
+    };
+
+    TEST_CLASS(IntegerTest)
+    {
+    public:
+
+        
+        template <
+            typename T,
+            typename = std::enable_if_t<std::is_integral<T>::value>>
+            struct Testcase
+        {
+            Integer<T> v1;
+            Integer<T> v2;
+            Integer<T> ResultExpected;
+            uint8_t StateExpected;
+        };
+
+        enum class TestType : uint32_t
+        {
+            Add,    // a + b
+            Sub,    // a - b
+
+            Mul,    // a * b
+            Div,    // a / b
+            Rem,    // a % b
+
+            Shl,    // a << b
+            Shr,    // a >> b
+
+            And,    // a & b
+            Or,     // a | b
+            Xor,    // a ^ b
+
+            Neg,    // -a
+            Not,    // ~a
+            Inc,    // a++, ++a
+            Dec,    // a--, --a
+        };
+
+        template <
+            typename T,
+            typename = std::enable_if_t<std::is_integral<T>::value && std::is_unsigned<T>::value>>
+        T Shr_Signed_Helper(T v1, T v2)
+        {
+            T vr = 0;
+            constexpr const T signbit = static_cast<T>(1) << ((sizeof(T) << 3) - 1);
+
+            if (v2 >= (sizeof(T) << 3))
+            {
+                vr = (v1 & signbit) ? ~0 : 0;
+            }
+            else
+            {
+                vr = v1 >> v2;
+                if (v1 & signbit)
+                    vr |= ~(static_cast<T>(~0) >> v2);
+            }
+            return vr;
+        };
+
+        template <
+            typename T,
+            typename = std::enable_if_t<std::is_integral<T>::value>>
+        void DoTest(TestType Type, const Testcase<T> Testcases[], size_t Count)
+        {
+            T Bitwidth = sizeof(T);
+
+            for (size_t i = 0; i < Count; i++)
+            {
+                Testcase<T> Entry = Testcases[i];
+                std::vector<Integer<T>> Results;
+
+                switch (Type)
+                {
+                case TestType::Add:    // a + b
+                {
+                    Results = {
+                        Entry.v1 + Entry.v2,
+                        Entry.v2 + Entry.v1,
+                        Integer<T>(Entry.v1) += Entry.v2,
+                        Integer<T>(Entry.v2) += Entry.v1,
+                    };
+                    break;
+                }
+                case TestType::Sub:    // a - b
+                {
+                    Results = {
+                        Entry.v1 - Entry.v2,
+                        Integer<T>(Entry.v1) -= Entry.v2,
+                    };
+                    break;
+                }
+                case TestType::Mul:    // a * b
+                {
+                    Results = {
+                        Entry.v1 * Entry.v2,
+                        Entry.v2 * Entry.v1,
+                        Integer<T>(Entry.v1) *= Entry.v2,
+                        Integer<T>(Entry.v2) *= Entry.v1,
+                    };
+                    break;
+                }
+                case TestType::Div:    // a / b
+                {
+                    Results = {
+                        Entry.v1 / Entry.v2,
+                        Integer<T>(Entry.v1) /= Entry.v2,
+                    };
+                    break;
+                }
+                case TestType::Rem:    // a % b
+                {
+                    Results = {
+                        Entry.v1 % Entry.v2,
+                        Integer<T>(Entry.v1) %= Entry.v2,
+                    };
+                    break;
+                }
+                case TestType::Shl:    // a << b
+                {
+                    Results = {
+                        Entry.v1 << Entry.v2,
+                        Integer<T>(Entry.v1) <<= Entry.v2,
+                    };
+                    break;
+                }
+                case TestType::Shr:    // a >> b
+                {
+                    Results = {
+                        Entry.v1 >> Entry.v2,
+                        Integer<T>(Entry.v1) >>= Entry.v2,
+                    };
+                    break;
+                }
+                case TestType::And:    // a & b
+                {
+                    Results = {
+                        Entry.v1 & Entry.v2,
+                        Entry.v2 & Entry.v1,
+                        Integer<T>(Entry.v1) &= Entry.v2,
+                        Integer<T>(Entry.v2) &= Entry.v1,
+                    };
+                    break;
+                }
+                case TestType::Or:     // a | b
+                {
+                    Results = {
+                        Entry.v1 | Entry.v2,
+                        Entry.v2 | Entry.v1,
+                        Integer<T>(Entry.v1) |= Entry.v2,
+                        Integer<T>(Entry.v2) |= Entry.v1,
+                    };
+                    break;
+                }
+                case TestType::Xor:    // a ^ b
+                {
+                    Results = {
+                        Entry.v1 ^ Entry.v2,
+                        Entry.v2 ^ Entry.v1,
+                        Integer<T>(Entry.v1) ^= Entry.v2,
+                        Integer<T>(Entry.v2) ^= Entry.v1,
+                    };
+                    break;
+                }
+                case TestType::Neg:    // -a
+                {
+                    Results = {
+                        -Entry.v1,
+                    };
+                    break;
+                }
+                case TestType::Not:    // ~a
+                {
+                    Results = {
+                        ~Entry.v1,
+                    };
+                    break;
+                }
+                case TestType::Inc:    // a++, ++a
+                {
+                    Results = {
+                        (Integer<T>(Entry.v1)++),
+                        (++Integer<T>(Entry.v1)),
+                    };
+                    break;
+                }
+                case TestType::Dec:    // a--, --a
+                {
+                    Results = {
+                        (Integer<T>(Entry.v1)--),
+                        (--Integer<T>(Entry.v1)),
+                    };
+                    break;
+                }
+                default:
+                    Assert::IsTrue(false, L"invalid test type");
+                }
+
+                for (size_t j = 0; j < Results.size(); j++)
+                {
+                    auto& it = Results[j];
+                    Assert::AreEqual(Entry.ResultExpected.Value(), it.Value(), 
+                        Format(L"result value mismatch on testcase %zd, result_item %zd", i, j).c_str());
+                    Assert::AreEqual(Entry.StateExpected, it.State(),
+                        Format(L"result state mismatch on testcase %zd, result_item %zd", i, j).c_str());
+                }
+            }
+        }
+
+        template <
+            typename T,
+            size_t Count,
+            typename = std::enable_if_t<std::is_integral<T>::value>>
+            void DoTest(TestType Type, const Testcase<T> (&Testcases)[Count])
+        {
+            DoTest(Type, Testcases, Count);
+        }
+
+        template <
+            typename T,
+            typename = std::enable_if_t<std::is_integral<T>::value>>
+            void DoTest(TestType Type, const std::vector<Testcase<T>>& Testcases)
+        {
+            DoTest(Type, Testcases.data(), Testcases.size());
+        }
+
+
+#define C_PUSH_WARNING_IGNORE		4307 4146
+#include "push_warnings.h"
+        template <
+            typename T,
+            std::enable_if_t<std::is_integral<T>::value && std::is_signed<T>::value, bool> = true>
+            void DoMultipleTest()
+        {
+            using TInt = typename T;
+            using TUInt = typename std::make_unsigned_t<TInt>;
+            using TSInt = typename std::make_signed_t<TInt>;
+
+            constexpr const TUInt imin = std::numeric_limits<TInt>::min();
+            constexpr const TUInt imax = std::numeric_limits<TInt>::max();
+            constexpr const TUInt bitwidth = sizeof(TInt) << 3;
+            constexpr const TUInt signbit = static_cast<TUInt>(1) << (bitwidth - 1);
+            constexpr const TUInt fullmask = ~0;
+
+            constexpr const uint8_t s_inv = Integer<TInt>::StateFlags::Invalid;
+            constexpr const uint8_t s_ovf = Integer<TInt>::StateFlags::Overflow;
+            constexpr const uint8_t s_div = Integer<TInt>::StateFlags::DivideByZero;
+
+            Integer<TInt> nan;
+
+            DoTest(TestType::Add, std::vector<Testcase<TInt>>
+            {
+                #define OpExpected(_v1, _v2)        TInt(TUInt(_v1) + TUInt(_v2))
+                // v1, v2, result_expected, state_expected
+
+                { nan, 1, nan, s_inv, },
+
+                { TInt(1), TInt(2), OpExpected(1, 2), 0, },
+                { TInt(1), TInt(imax), OpExpected(1, imax), s_ovf, },
+                { TInt(-1), TInt(imin), OpExpected(-1, imin), s_ovf, },
+
+                { TInt(imin), TInt(-3), OpExpected(imin, -3), s_ovf, },
+                { TInt(imin), TInt(-2), OpExpected(imin, -2), s_ovf, },
+                { TInt(imin), TInt(-1), OpExpected(imin, -1), s_ovf, },
+                { TInt(imin), TInt(1), OpExpected(imin, 1), 0, },
+                { TInt(imin), TInt(2), OpExpected(imin, 2), 0, },
+                { TInt(imin), TInt(3), OpExpected(imin, 3), 0, },
+
+                { TInt(imin), TInt(imax), OpExpected(imin, imax), 0, },
+                { TInt(imax), TInt(imin), OpExpected(imax, imin), 0, },
+
+                { TInt(imax), TInt(-3), OpExpected(imax, -3), 0, },
+                { TInt(imax), TInt(-2), OpExpected(imax, -2), 0, },
+                { TInt(imax), TInt(-1), OpExpected(imax, -1), 0, },
+                { TInt(imax), TInt(1), OpExpected(imax, 1), s_ovf, },
+                { TInt(imax), TInt(2), OpExpected(imax, 2), s_ovf, },
+                { TInt(imax), TInt(3), OpExpected(imax, 3), s_ovf, },
+
+                { TInt(imin), TInt(imax - 3), OpExpected(imin, imax - 3), 0, },
+                { TInt(imin), TInt(imax - 2), OpExpected(imin, imax - 2), 0, },
+                { TInt(imin), TInt(imax - 1), OpExpected(imin, imax - 1), 0, },
+
+                { TInt(imax), TInt(imin + 1), OpExpected(imax, imin + 1), 0, },
+                { TInt(imax), TInt(imin + 2), OpExpected(imax, imin + 2), 0, },
+                { TInt(imax), TInt(imin + 3), OpExpected(imax, imin + 3), 0, },
+
+                #undef OpExpected
+            });
+
+            DoTest(TestType::Sub, std::vector<Testcase<TInt>>
+            {
+                #define OpExpected(_v1, _v2)        TInt(TUInt(_v1) - TUInt(_v2))
+                // v1, v2, result_expected, state_expected
+
+                { nan, 1, nan, s_inv, },
+
+                { TInt(1), TInt(2), OpExpected(1, 2), 0, },
+                { TInt(1), TInt(imax), OpExpected(1, imax), 0, },
+                { TInt(-1), TInt(imin), OpExpected(-1, imin), 0, },
+
+                { TInt(imin), TInt(-3), OpExpected(imin, -3), 0, },
+                { TInt(imin), TInt(-2), OpExpected(imin, -2), 0, },
+                { TInt(imin), TInt(-1), OpExpected(imin, -1), 0, },
+                { TInt(imin), TInt(1), OpExpected(imin, 1), s_ovf, },
+                { TInt(imin), TInt(2), OpExpected(imin, 2), s_ovf, },
+                { TInt(imin), TInt(3), OpExpected(imin, 3), s_ovf, },
+
+                { TInt(imin), TInt(imax), OpExpected(imin, imax), s_ovf, },
+                { TInt(imax), TInt(imin), OpExpected(imax, imin), s_ovf, },
+
+                { TInt(imax), TInt(-3), OpExpected(imax, -3), s_ovf, },
+                { TInt(imax), TInt(-2), OpExpected(imax, -2), s_ovf, },
+                { TInt(imax), TInt(-1), OpExpected(imax, -1), s_ovf, },
+                { TInt(imax), TInt(1), OpExpected(imax, 1), 0, },
+                { TInt(imax), TInt(2), OpExpected(imax, 2), 0, },
+                { TInt(imax), TInt(3), OpExpected(imax, 3), 0, },
+
+                { TInt(imin), TInt(imax - 3), OpExpected(imin, imax - 3), s_ovf, },
+                { TInt(imin), TInt(imax - 2), OpExpected(imin, imax - 2), s_ovf, },
+                { TInt(imin), TInt(imax - 1), OpExpected(imin, imax - 1), s_ovf, },
+
+                { TInt(imax), TInt(imin + 1), OpExpected(imax, imin + 1), s_ovf, },
+                { TInt(imax), TInt(imin + 2), OpExpected(imax, imin + 2), s_ovf, },
+                { TInt(imax), TInt(imin + 3), OpExpected(imax, imin + 3), s_ovf, },
+
+                #undef OpExpected
+            });
+
+            DoTest(TestType::Mul, std::vector<Testcase<TInt>>
+            {
+                #define OpExpected(_v1, _v2)        TInt(TUInt(_v1) * TUInt(_v2))
+                // v1, v2, result_expected, state_expected
+
+                { nan, 1, nan, s_inv, },
+
+                { TInt(1), TInt(2), OpExpected(1, 2), 0, },
+                { TInt(1), TInt(imax), OpExpected(1, imax), 0, },
+                { TInt(-1), TInt(imin), OpExpected(-1, imin), s_ovf, },
+
+                { TInt(imin), TInt(-3), OpExpected(imin, -3), s_ovf, },
+                { TInt(imin), TInt(-2), OpExpected(imin, -2), s_ovf, },
+                { TInt(imin), TInt(-1), OpExpected(imin, -1), s_ovf, },
+                { TInt(imin), TInt(1), OpExpected(imin, 1), 0, },
+                { TInt(imin), TInt(2), OpExpected(imin, 2), s_ovf, },
+                { TInt(imin), TInt(3), OpExpected(imin, 3), s_ovf, },
+
+                { TInt(imin), TInt(imax), OpExpected(imin, imax), s_ovf, },
+                { TInt(imax), TInt(imin), OpExpected(imax, imin), s_ovf, },
+
+                { TInt(imax), TInt(-3), OpExpected(imax, -3), s_ovf, },
+                { TInt(imax), TInt(-2), OpExpected(imax, -2), s_ovf, },
+                { TInt(imax), TInt(-1), OpExpected(imax, -1), 0, },
+                { TInt(imax), TInt(1), OpExpected(imax, 1), 0, },
+                { TInt(imax), TInt(2), OpExpected(imax, 2), s_ovf, },
+                { TInt(imax), TInt(3), OpExpected(imax, 3), s_ovf, },
+
+                { TInt(imin), TInt(imax - 3), OpExpected(imin, imax - 3), s_ovf, },
+                { TInt(imin), TInt(imax - 2), OpExpected(imin, imax - 2), s_ovf, },
+                { TInt(imin), TInt(imax - 1), OpExpected(imin, imax - 1), s_ovf, },
+
+                { TInt(imax), TInt(imin + 1), OpExpected(imax, imin + 1), s_ovf, },
+                { TInt(imax), TInt(imin + 2), OpExpected(imax, imin + 2), s_ovf, },
+                { TInt(imax), TInt(imin + 3), OpExpected(imax, imin + 3), s_ovf, },
+
+                #undef OpExpected
+            });
+
+            DoTest(TestType::Div, std::vector<Testcase<TInt>>
+            {
+                #define OpExpected(_v1, _v2)        TInt(TInt(_v1) / TInt(_v2))
+                // v1, v2, result_expected, state_expected
+
+                { nan, 1, nan, s_inv, },
+
+                { TInt(1), TInt(2), OpExpected(1, 2), 0, },
+                { TInt(1), TInt(imax), OpExpected(1, imax), 0, },
+                { TInt(-1), TInt(imin), OpExpected(-1, imin), 0, },
+
+                // what the ...?
+                { TInt(imin), TInt(-3), OpExpected(imin, -3), 0, },
+                { TInt(imin), TInt(-2), OpExpected(imin, -2), 0, },
+                { TInt(imin), TInt(-1), TInt(imin) /*-imin = imin*/, s_ovf, },
+                { TInt(imin), TInt(1), OpExpected(imin, 1), 0, },
+                { TInt(imin), TInt(2), OpExpected(imin, 2), 0, },
+                { TInt(imin), TInt(3), OpExpected(imin, 3), 0, },
+
+                { TInt(imin), TInt(imax), OpExpected(imin, imax), 0, },
+                { TInt(imax), TInt(imin), OpExpected(imax, imin), 0, },
+
+                { TInt(imax), TInt(-3), OpExpected(imax, -3), 0, },
+                { TInt(imax), TInt(-2), OpExpected(imax, -2), 0, },
+                { TInt(imax), TInt(-1), OpExpected(imax, -1), 0, },
+                { TInt(imax), TInt(1), OpExpected(imax, 1), 0, },
+                { TInt(imax), TInt(2), OpExpected(imax, 2), 0, },
+                { TInt(imax), TInt(3), OpExpected(imax, 3), 0, },
+
+                { TInt(imin), TInt(imax - 3), OpExpected(imin, imax - 3), 0, },
+                { TInt(imin), TInt(imax - 2), OpExpected(imin, imax - 2), 0, },
+                { TInt(imin), TInt(imax - 1), OpExpected(imin, imax - 1), 0, },
+
+                { TInt(imax), TInt(imin + 1), OpExpected(imax, imin + 1), 0, },
+                { TInt(imax), TInt(imin + 2), OpExpected(imax, imin + 2), 0, },
+                { TInt(imax), TInt(imin + 3), OpExpected(imax, imin + 3), 0, },
+
+                { TInt(imin), TInt(0), nan, s_inv | s_div, },
+                { TInt(imax), TInt(0), nan, s_inv | s_div, },
+
+                #undef OpExpected
+            });
+
+            DoTest(TestType::Rem, std::vector<Testcase<TInt>>
+            {
+                #define OpExpected(_v1, _v2)        TInt(   \
+                    ( ((_v1) ^ (_v2)) & signbit ? -1 : 1 )  \
+                        * std::abs(TInt(_v1) % TInt(_v2))   \
+                )
+                // v1, v2, result_expected, state_expected
+
+                { nan, 1, nan, s_inv, },
+
+                { TInt(1), TInt(2), OpExpected(1, 2), 0, },
+                { TInt(1), TInt(imax), OpExpected(1, imax), 0, },
+                { TInt(-1), TInt(imin), OpExpected(-1, imin), 0, },
+
+                { TInt(imin), TInt(-3), OpExpected(imin, -3), 0, },
+                { TInt(imin), TInt(-2), OpExpected(imin, -2), 0, },
+                { TInt(imin), TInt(-1), 0 /*-imin = imin*/, 0, },
+                { TInt(imin), TInt(1), OpExpected(imin, 1), 0, },
+                { TInt(imin), TInt(2), OpExpected(imin, 2), 0, },
+                { TInt(imin), TInt(3), OpExpected(imin, 3), 0, },
+
+                { TInt(imin), TInt(imax), OpExpected(imin, imax), 0, },
+                { TInt(imax), TInt(imin), OpExpected(imax, imin), 0, },
+
+                { TInt(imax), TInt(-3), OpExpected(imax, -3), 0, },
+                { TInt(imax), TInt(-2), OpExpected(imax, -2), 0, },
+                { TInt(imax), TInt(-1), OpExpected(imax, -1), 0, },
+                { TInt(imax), TInt(1), OpExpected(imax, 1), 0, },
+                { TInt(imax), TInt(2), OpExpected(imax, 2), 0, },
+                { TInt(imax), TInt(3), OpExpected(imax, 3), 0, },
+
+                { TInt(imin), TInt(imax - 3), OpExpected(imin, imax - 3), 0, },
+                { TInt(imin), TInt(imax - 2), OpExpected(imin, imax - 2), 0, },
+                { TInt(imin), TInt(imax - 1), OpExpected(imin, imax - 1), 0, },
+
+                { TInt(imax), TInt(imin + 1), OpExpected(imax, imin + 1), 0, },
+                { TInt(imax), TInt(imin + 2), OpExpected(imax, imin + 2), 0, },
+                { TInt(imax), TInt(imin + 3), OpExpected(imax, imin + 3), 0, },
+
+                { TInt(imin), TInt(0), nan, s_inv | s_div, },
+                { TInt(imax), TInt(0), nan, s_inv | s_div, },
+
+                #undef OpExpected
+            });
+
+            DoTest(TestType::Shl, std::vector<Testcase<TInt>>
+            {
+                #define OpExpected(_v1, _v2)        TInt(   \
+                    (TUInt(_v2) >= bitwidth) ? 0 : (        \
+                        (TUInt(_v1)) << TUInt(              \
+                            (TUInt(_v2)) & (bitwidth - 1)   \
+                        )                                   \
+                    ))
+                // v1, v2, result_expected, state_expected
+
+                { nan, 1, nan, s_inv, },
+
+                { TInt(1), TInt(2), OpExpected(1, 2), 0, },
+                { TInt(1), TInt(imax), OpExpected(1, imax), s_ovf, },
+                { TInt(-1), TInt(imin), nan, s_inv, },
+
+                { TInt(imin), TInt(-3), nan, s_inv, },
+                { TInt(imin), TInt(-2), nan, s_inv, },
+                { TInt(imin), TInt(-1), nan, s_inv, },
+                { TInt(imin), TInt(1), OpExpected(imin, 1), s_ovf, },
+                { TInt(imin), TInt(2), OpExpected(imin, 2), s_ovf, },
+                { TInt(imin), TInt(3), OpExpected(imin, 3), s_ovf, },
+
+                { TInt(imin), TInt(imax), OpExpected(imin, imax), s_ovf, },
+                { TInt(imax), TInt(imin), nan, s_inv, },
+
+                { TInt(imax), TInt(-3), nan, s_inv, },
+                { TInt(imax), TInt(-2), nan, s_inv, },
+                { TInt(imax), TInt(-1), nan, s_inv, },
+                { TInt(imax), TInt(1), OpExpected(imax, 1), s_ovf, },
+                { TInt(imax), TInt(2), OpExpected(imax, 2), s_ovf, },
+                { TInt(imax), TInt(3), OpExpected(imax, 3), s_ovf, },
+
+                { TInt(imin), TInt(imax - 3), OpExpected(imin, imax - 3), s_ovf, },
+                { TInt(imin), TInt(imax - 2), OpExpected(imin, imax - 2), s_ovf, },
+                { TInt(imin), TInt(imax - 1), OpExpected(imin, imax - 1), s_ovf, },
+
+                { TInt(imax), TInt(imin + 1), nan, s_inv, },
+                { TInt(imax), TInt(imin + 2), nan, s_inv, },
+                { TInt(imax), TInt(imin + 3), nan, s_inv, },
+
+                { TInt(0), TInt(imax - 3), OpExpected(0, imax - 3), 0, },
+                { TInt(0), TInt(imax - 2), OpExpected(0, imax - 2), 0, },
+                { TInt(0), TInt(imax - 1), OpExpected(0, imax - 1), 0, },
+
+                { TInt(0), TInt(imin + 1), nan, s_inv, },
+                { TInt(0), TInt(imin + 2), nan, s_inv, },
+                { TInt(0), TInt(imin + 3), nan, s_inv, },
+
+                #undef OpExpected
+            });
+
+            DoTest(TestType::Shr, std::vector<Testcase<TInt>>
+            {
+                // defined if _v2 >= 0
+                #define OpExpected(_v1, _v2)        TInt(Shr_Signed_Helper(TUInt(_v1), TUInt(_v2)))
+                // v1, v2, result_expected, state_expected
+
+                { nan, 1, nan, s_inv, },
+
+                { TInt(1), TInt(2), OpExpected(1, 2), 0, },
+                { TInt(1), TInt(imax), OpExpected(1, imax), 0, },
+                { TInt(-1), TInt(imin), nan, s_inv, },
+
+                { TInt(imin), TInt(-3), nan, s_inv, },
+                { TInt(imin), TInt(-2), nan, s_inv, },
+                { TInt(imin), TInt(-1), nan, s_inv, },
+                { TInt(imin), TInt(1), OpExpected(imin, 1), 0, },
+                { TInt(imin), TInt(2), OpExpected(imin, 2), 0, },
+                { TInt(imin), TInt(3), OpExpected(imin, 3), 0, },
+
+                { TInt(imin), TInt(imax), OpExpected(imin, imax), 0, },
+                { TInt(imax), TInt(imin), nan, s_inv, },
+
+                { TInt(imax), TInt(-3), nan, s_inv, },
+                { TInt(imax), TInt(-2), nan, s_inv, },
+                { TInt(imax), TInt(-1), nan, s_inv, },
+                { TInt(imax), TInt(1), OpExpected(imax, 1), 0, },
+                { TInt(imax), TInt(2), OpExpected(imax, 2), 0, },
+                { TInt(imax), TInt(3), OpExpected(imax, 3), 0, },
+
+                { TInt(imin), TInt(imax - 3), OpExpected(imin, imax - 3), 0, },
+                { TInt(imin), TInt(imax - 2), OpExpected(imin, imax - 2), 0, },
+                { TInt(imin), TInt(imax - 1), OpExpected(imin, imax - 1), 0, },
+
+                { TInt(imax), TInt(imin + 1), nan, s_inv, },
+                { TInt(imax), TInt(imin + 2), nan, s_inv, },
+                { TInt(imax), TInt(imin + 3), nan, s_inv, },
+
+                #undef OpExpected
+            });
+
+            DoTest(TestType::And, std::vector<Testcase<TInt>>
+            {
+                #define OpExpected(_v1, _v2)        TInt(TUInt(_v1) & TUInt(_v2))
+                // v1, v2, result_expected, state_expected
+
+                { nan, 1, nan, s_inv, },
+
+                { TInt(1), TInt(2), OpExpected(1, 2), 0, },
+                { TInt(1), TInt(imax), OpExpected(1, imax), 0, },
+                { TInt(-1), TInt(imin), OpExpected(-1, imin), 0, },
+
+                { TInt(imin), TInt(-3), OpExpected(imin, -3), 0, },
+                { TInt(imin), TInt(-2), OpExpected(imin, -2), 0, },
+                { TInt(imin), TInt(-1), OpExpected(imin, -1), 0, },
+                { TInt(imin), TInt(1), OpExpected(imin, 1), 0, },
+                { TInt(imin), TInt(2), OpExpected(imin, 2), 0, },
+                { TInt(imin), TInt(3), OpExpected(imin, 3), 0, },
+
+                { TInt(imin), TInt(imax), OpExpected(imin, imax), 0, },
+                { TInt(imax), TInt(imin), OpExpected(imax, imin), 0, },
+
+                { TInt(imax), TInt(-3), OpExpected(imax, -3), 0, },
+                { TInt(imax), TInt(-2), OpExpected(imax, -2), 0, },
+                { TInt(imax), TInt(-1), OpExpected(imax, -1), 0, },
+                { TInt(imax), TInt(1), OpExpected(imax, 1), 0, },
+                { TInt(imax), TInt(2), OpExpected(imax, 2), 0, },
+                { TInt(imax), TInt(3), OpExpected(imax, 3), 0, },
+
+                { TInt(imin), TInt(imax - 3), OpExpected(imin, imax - 3), 0, },
+                { TInt(imin), TInt(imax - 2), OpExpected(imin, imax - 2), 0, },
+                { TInt(imin), TInt(imax - 1), OpExpected(imin, imax - 1), 0, },
+
+                { TInt(imax), TInt(imin + 1), OpExpected(imax, imin + 1), 0, },
+                { TInt(imax), TInt(imin + 2), OpExpected(imax, imin + 2), 0, },
+                { TInt(imax), TInt(imin + 3), OpExpected(imax, imin + 3), 0, },
+
+                #undef OpExpected
+            });
+
+            DoTest(TestType::Or, std::vector<Testcase<TInt>>
+            {
+                #define OpExpected(_v1, _v2)        TInt(TUInt(_v1) | TUInt(_v2))
+                // v1, v2, result_expected, state_expected
+
+                { nan, 1, nan, s_inv, },
+
+                { TInt(1), TInt(2), OpExpected(1, 2), 0, },
+                { TInt(1), TInt(imax), OpExpected(1, imax), 0, },
+                { TInt(-1), TInt(imin), OpExpected(-1, imin), 0, },
+
+                { TInt(imin), TInt(-3), OpExpected(imin, -3), 0, },
+                { TInt(imin), TInt(-2), OpExpected(imin, -2), 0, },
+                { TInt(imin), TInt(-1), OpExpected(imin, -1), 0, },
+                { TInt(imin), TInt(1), OpExpected(imin, 1), 0, },
+                { TInt(imin), TInt(2), OpExpected(imin, 2), 0, },
+                { TInt(imin), TInt(3), OpExpected(imin, 3), 0, },
+
+                { TInt(imin), TInt(imax), OpExpected(imin, imax), 0, },
+                { TInt(imax), TInt(imin), OpExpected(imax, imin), 0, },
+
+                { TInt(imax), TInt(-3), OpExpected(imax, -3), 0, },
+                { TInt(imax), TInt(-2), OpExpected(imax, -2), 0, },
+                { TInt(imax), TInt(-1), OpExpected(imax, -1), 0, },
+                { TInt(imax), TInt(1), OpExpected(imax, 1), 0, },
+                { TInt(imax), TInt(2), OpExpected(imax, 2), 0, },
+                { TInt(imax), TInt(3), OpExpected(imax, 3), 0, },
+
+                { TInt(imin), TInt(imax - 3), OpExpected(imin, imax - 3), 0, },
+                { TInt(imin), TInt(imax - 2), OpExpected(imin, imax - 2), 0, },
+                { TInt(imin), TInt(imax - 1), OpExpected(imin, imax - 1), 0, },
+
+                { TInt(imax), TInt(imin + 1), OpExpected(imax, imin + 1), 0, },
+                { TInt(imax), TInt(imin + 2), OpExpected(imax, imin + 2), 0, },
+                { TInt(imax), TInt(imin + 3), OpExpected(imax, imin + 3), 0, },
+
+                #undef OpExpected
+            });
+
+            DoTest(TestType::Xor, std::vector<Testcase<TInt>>
+            {
+                #define OpExpected(_v1, _v2)        TInt(TUInt(_v1) ^ TUInt(_v2))
+                // v1, v2, result_expected, state_expected
+
+                { nan, 1, nan, s_inv, },
+
+                { TInt(1), TInt(2), OpExpected(1, 2), 0, },
+                { TInt(1), TInt(imax), OpExpected(1, imax), 0, },
+                { TInt(-1), TInt(imin), OpExpected(-1, imin), 0, },
+
+                { TInt(imin), TInt(-3), OpExpected(imin, -3), 0, },
+                { TInt(imin), TInt(-2), OpExpected(imin, -2), 0, },
+                { TInt(imin), TInt(-1), OpExpected(imin, -1), 0, },
+                { TInt(imin), TInt(1), OpExpected(imin, 1), 0, },
+                { TInt(imin), TInt(2), OpExpected(imin, 2), 0, },
+                { TInt(imin), TInt(3), OpExpected(imin, 3), 0, },
+
+                { TInt(imin), TInt(imax), OpExpected(imin, imax), 0, },
+                { TInt(imax), TInt(imin), OpExpected(imax, imin), 0, },
+
+                { TInt(imax), TInt(-3), OpExpected(imax, -3), 0, },
+                { TInt(imax), TInt(-2), OpExpected(imax, -2), 0, },
+                { TInt(imax), TInt(-1), OpExpected(imax, -1), 0, },
+                { TInt(imax), TInt(1), OpExpected(imax, 1), 0, },
+                { TInt(imax), TInt(2), OpExpected(imax, 2), 0, },
+                { TInt(imax), TInt(3), OpExpected(imax, 3), 0, },
+
+                { TInt(imin), TInt(imax - 3), OpExpected(imin, imax - 3), 0, },
+                { TInt(imin), TInt(imax - 2), OpExpected(imin, imax - 2), 0, },
+                { TInt(imin), TInt(imax - 1), OpExpected(imin, imax - 1), 0, },
+
+                { TInt(imax), TInt(imin + 1), OpExpected(imax, imin + 1), 0, },
+                { TInt(imax), TInt(imin + 2), OpExpected(imax, imin + 2), 0, },
+                { TInt(imax), TInt(imin + 3), OpExpected(imax, imin + 3), 0, },
+
+                #undef OpExpected
+            });
+
+            DoTest(TestType::Neg, std::vector<Testcase<TInt>>
+            {
+                #define OpExpected(_v1)         TInt(-TUInt(_v1))
+                // v1, v2, result_expected, state_expected
+
+                { nan, 0, nan, s_inv, },
+
+                { TInt(1), 0, OpExpected(1), 0, },
+                { TInt(-1), 0, OpExpected(-1), 0, },
+
+                { TInt(imin - 3), 0, OpExpected(imin - 3), 0, },
+                { TInt(imin - 2), 0, OpExpected(imin - 2), 0, },
+                { TInt(imin - 1), 0, OpExpected(imin - 1), 0, },
+                { TInt(imin), 0, OpExpected(imin), 0, },
+                { TInt(imin + 1), 0, OpExpected(imin + 1), 0, },
+                { TInt(imin + 2), 0, OpExpected(imin + 2), 0, },
+                { TInt(imin + 3), 0, OpExpected(imin + 3), 0, },
+
+                { TInt(imax - 3), 0, OpExpected(imax - 3), 0, },
+                { TInt(imax - 2), 0, OpExpected(imax - 2), 0, },
+                { TInt(imax - 1), 0, OpExpected(imax - 1), 0, },
+                { TInt(imax), 0, OpExpected(imax), 0, },
+                { TInt(imax + 1), 0, OpExpected(imax + 1), 0, },
+                { TInt(imax + 2), 0, OpExpected(imax + 2), 0, },
+                { TInt(imax + 3), 0, OpExpected(imax + 3), 0, },
+
+                #undef OpExpected
+            });
+
+            DoTest(TestType::Not, std::vector<Testcase<TInt>>
+            {
+                #define OpExpected(_v1)         TInt(~TUInt(_v1))
+                // v1, v2, result_expected, state_expected
+
+                { nan, 0, nan, s_inv, },
+
+                { TInt(1), 0, OpExpected(1), 0, },
+                { TInt(-1), 0, OpExpected(-1), 0, },
+
+                { TInt(imin - 3), 0, OpExpected(imin - 3), 0, },
+                { TInt(imin - 2), 0, OpExpected(imin - 2), 0, },
+                { TInt(imin - 1), 0, OpExpected(imin - 1), 0, },
+                { TInt(imin), 0, OpExpected(imin), 0, },
+                { TInt(imin + 1), 0, OpExpected(imin + 1), 0, },
+                { TInt(imin + 2), 0, OpExpected(imin + 2), 0, },
+                { TInt(imin + 3), 0, OpExpected(imin + 3), 0, },
+
+                { TInt(imax - 3), 0, OpExpected(imax - 3), 0, },
+                { TInt(imax - 2), 0, OpExpected(imax - 2), 0, },
+                { TInt(imax - 1), 0, OpExpected(imax - 1), 0, },
+                { TInt(imax), 0, OpExpected(imax), 0, },
+                { TInt(imax + 1), 0, OpExpected(imax + 1), 0, },
+                { TInt(imax + 2), 0, OpExpected(imax + 2), 0, },
+                { TInt(imax + 3), 0, OpExpected(imax + 3), 0, },
+
+                #undef OpExpected
+            });
+
+            DoTest(TestType::Inc, std::vector<Testcase<TInt>>
+            {
+                #define OpExpected(_v1)         TInt(TUInt(_v1) + 1)
+                // v1, v2, result_expected, state_expected
+
+                { nan, 0, nan, s_inv, },
+
+                { TInt(1), 0, OpExpected(1), 0, },
+                { TInt(-1), 0, OpExpected(-1), 0, },
+
+                { TInt(imin - 3), 0, OpExpected(imin - 3), 0, },
+                { TInt(imin - 2), 0, OpExpected(imin - 2), 0, },
+                { TInt(imin - 1), 0, OpExpected(imin - 1), s_ovf, },
+                { TInt(imin), 0, OpExpected(imin), 0, },
+                { TInt(imin + 1), 0, OpExpected(imin + 1), 0, },
+                { TInt(imin + 2), 0, OpExpected(imin + 2), 0, },
+                { TInt(imin + 3), 0, OpExpected(imin + 3), 0, },
+
+                { TInt(imax - 3), 0, OpExpected(imax - 3), 0, },
+                { TInt(imax - 2), 0, OpExpected(imax - 2), 0, },
+                { TInt(imax - 1), 0, OpExpected(imax - 1), 0, },
+                { TInt(imax), 0, OpExpected(imax), s_ovf, },
+                { TInt(imax + 1), 0, OpExpected(imax + 1), 0, },
+                { TInt(imax + 2), 0, OpExpected(imax + 2), 0, },
+                { TInt(imax + 3), 0, OpExpected(imax + 3), 0, },
+
+                #undef OpExpected
+            });
+
+            DoTest(TestType::Dec, std::vector<Testcase<TInt>>
+            {
+                #define OpExpected(_v1)         TInt(TUInt(_v1) - 1)
+                // v1, v2, result_expected, state_expected
+
+                { nan, 0, nan, s_inv, },
+
+                { TInt(1), 0, OpExpected(1), 0, },
+                { TInt(-1), 0, OpExpected(-1), 0, },
+
+                { TInt(imin - 3), 0, OpExpected(imin - 3), 0, },
+                { TInt(imin - 2), 0, OpExpected(imin - 2), 0, },
+                { TInt(imin - 1), 0, OpExpected(imin - 1), 0, },
+                { TInt(imin), 0, OpExpected(imin), s_ovf, },
+                { TInt(imin + 1), 0, OpExpected(imin + 1), 0, },
+                { TInt(imin + 2), 0, OpExpected(imin + 2), 0, },
+                { TInt(imin + 3), 0, OpExpected(imin + 3), 0, },
+
+                { TInt(imax - 3), 0, OpExpected(imax - 3), 0, },
+                { TInt(imax - 2), 0, OpExpected(imax - 2), 0, },
+                { TInt(imax - 1), 0, OpExpected(imax - 1), 0, },
+                { TInt(imax), 0, OpExpected(imax), 0, },
+                { TInt(imax + 1), 0, OpExpected(imax + 1), s_ovf, },
+                { TInt(imax + 2), 0, OpExpected(imax + 2), 0, },
+                { TInt(imax + 3), 0, OpExpected(imax + 3), 0, },
+
+                #undef OpExpected
+            });
+        }
+
+        template <
+            typename T,
+            std::enable_if_t<std::is_integral<T>::value && std::is_unsigned<T>::value, bool> = true>
+            void DoMultipleTest()
+        {
+            using TInt = typename T;
+            using TUInt = typename std::make_unsigned_t<TInt>;
+            using TSInt = typename std::make_signed_t<TInt>;
+
+            constexpr const TUInt imin = std::numeric_limits<TInt>::min();
+            constexpr const TUInt imax = std::numeric_limits<TInt>::max();
+            constexpr const TUInt bitwidth = sizeof(TInt) << 3;
+
+            constexpr const uint8_t s_inv = Integer<TInt>::StateFlags::Invalid;
+            constexpr const uint8_t s_ovf = Integer<TInt>::StateFlags::Overflow;
+            constexpr const uint8_t s_div = Integer<TInt>::StateFlags::DivideByZero;
+
+            Integer<TInt> nan;
+
+            DoTest(TestType::Add, std::vector<Testcase<TInt>>
+            {
+                #define OpExpected(_v1, _v2)        TUInt(TUInt(_v1) + TUInt(_v2))
+                // v1, v2, result_expected, state_expected
+
+                { nan, 1, nan, s_inv, },
+
+                { TUInt(1), TUInt(2), OpExpected(1, 2), 0, },
+                { TUInt(1), TUInt(imax), OpExpected(1, imax), s_ovf, },
+                { TUInt(-1), TUInt(imin), OpExpected(-1, imin), 0, },
+
+                { TUInt(imin), TUInt(-3), OpExpected(imin, -3), 0, },
+                { TUInt(imin), TUInt(-2), OpExpected(imin, -2), 0, },
+                { TUInt(imin), TUInt(-1), OpExpected(imin, -1), 0, },
+                { TUInt(imin), TUInt(1), OpExpected(imin, 1), 0, },
+                { TUInt(imin), TUInt(2), OpExpected(imin, 2), 0, },
+                { TUInt(imin), TUInt(3), OpExpected(imin, 3), 0, },
+
+                { TUInt(imin), TUInt(imax), OpExpected(imin, imax), 0, },
+                { TUInt(imax), TUInt(imin), OpExpected(imax, imin), 0, },
+
+                { TUInt(imax), TUInt(-3), OpExpected(imax, -3), s_ovf, },
+                { TUInt(imax), TUInt(-2), OpExpected(imax, -2), s_ovf, },
+                { TUInt(imax), TUInt(-1), OpExpected(imax, -1), s_ovf, },
+                { TUInt(imax), TUInt(1), OpExpected(imax, 1), s_ovf, },
+                { TUInt(imax), TUInt(2), OpExpected(imax, 2), s_ovf, },
+                { TUInt(imax), TUInt(3), OpExpected(imax, 3), s_ovf, },
+
+                { TUInt(imin), TUInt(imax - 3), OpExpected(imin, imax - 3), 0, },
+                { TUInt(imin), TUInt(imax - 2), OpExpected(imin, imax - 2), 0, },
+                { TUInt(imin), TUInt(imax - 1), OpExpected(imin, imax - 1), 0, },
+
+                { TUInt(imax), TUInt(imin + 1), OpExpected(imax, imin + 1), s_ovf, },
+                { TUInt(imax), TUInt(imin + 2), OpExpected(imax, imin + 2), s_ovf, },
+                { TUInt(imax), TUInt(imin + 3), OpExpected(imax, imin + 3), s_ovf, },
+
+                #undef OpExpected
+            });
+
+            DoTest(TestType::Sub, std::vector<Testcase<TInt>>
+            {
+                #define OpExpected(_v1, _v2)        TUInt(TUInt(_v1) - TUInt(_v2))
+                // v1, v2, result_expected, state_expected
+
+                { nan, 1, nan, s_inv, },
+
+                { TUInt(1), TUInt(2), OpExpected(1, 2), s_ovf, },
+                { TUInt(1), TUInt(imax), OpExpected(1, imax), s_ovf, },
+                { TUInt(-1), TUInt(imin), OpExpected(-1, imin), 0, },
+
+                { TUInt(imin), TUInt(-3), OpExpected(imin, -3), s_ovf, },
+                { TUInt(imin), TUInt(-2), OpExpected(imin, -2), s_ovf, },
+                { TUInt(imin), TUInt(-1), OpExpected(imin, -1), s_ovf, },
+                { TUInt(imin), TUInt(1), OpExpected(imin, 1), s_ovf, },
+                { TUInt(imin), TUInt(2), OpExpected(imin, 2), s_ovf, },
+                { TUInt(imin), TUInt(3), OpExpected(imin, 3), s_ovf, },
+
+                { TUInt(imin), TUInt(imax), OpExpected(imin, imax), s_ovf, },
+                { TUInt(imax), TUInt(imin), OpExpected(imax, imin), 0, },
+
+                { TUInt(imax), TUInt(-3), OpExpected(imax, -3), 0, },
+                { TUInt(imax), TUInt(-2), OpExpected(imax, -2), 0, },
+                { TUInt(imax), TUInt(-1), OpExpected(imax, -1), 0, },
+                { TUInt(imax), TUInt(1), OpExpected(imax, 1), 0, },
+                { TUInt(imax), TUInt(2), OpExpected(imax, 2), 0, },
+                { TUInt(imax), TUInt(3), OpExpected(imax, 3), 0, },
+
+                { TUInt(imin), TUInt(imax - 3), OpExpected(imin, imax - 3), s_ovf, },
+                { TUInt(imin), TUInt(imax - 2), OpExpected(imin, imax - 2), s_ovf, },
+                { TUInt(imin), TUInt(imax - 1), OpExpected(imin, imax - 1), s_ovf, },
+
+                { TUInt(imax), TUInt(imin + 1), OpExpected(imax, imin + 1), 0, },
+                { TUInt(imax), TUInt(imin + 2), OpExpected(imax, imin + 2), 0, },
+                { TUInt(imax), TUInt(imin + 3), OpExpected(imax, imin + 3), 0, },
+
+                #undef OpExpected
+            });
+
+            DoTest(TestType::Mul, std::vector<Testcase<TInt>>
+            {
+                #define OpExpected(_v1, _v2)        TUInt(TUInt(_v1) * TUInt(_v2))
+                // v1, v2, result_expected, state_expected
+
+                { nan, 1, nan, s_inv, },
+
+                { TUInt(1), TUInt(2), OpExpected(1, 2), 0, },
+                { TUInt(1), TUInt(imax), OpExpected(1, imax), 0, },
+                { TUInt(-1), TUInt(imin), OpExpected(-1, imin), 0, },
+
+                { TUInt(imin), TUInt(-3), OpExpected(imin, -3), 0, },
+                { TUInt(imin), TUInt(-2), OpExpected(imin, -2), 0, },
+                { TUInt(imin), TUInt(-1), OpExpected(imin, -1), 0, },
+                { TUInt(imin), TUInt(1), OpExpected(imin, 1), 0, },
+                { TUInt(imin), TUInt(2), OpExpected(imin, 2), 0, },
+                { TUInt(imin), TUInt(3), OpExpected(imin, 3), 0, },
+
+                { TUInt(imin), TUInt(imax), OpExpected(imin, imax), 0, },
+                { TUInt(imax), TUInt(imin), OpExpected(imax, imin), 0, },
+
+                { TUInt(imax), TUInt(-3), OpExpected(imax, -3), s_ovf, },
+                { TUInt(imax), TUInt(-2), OpExpected(imax, -2), s_ovf, },
+                { TUInt(imax), TUInt(-1), OpExpected(imax, -1), s_ovf, },
+                { TUInt(imax), TUInt(1), OpExpected(imax, 1), 0, },
+                { TUInt(imax), TUInt(2), OpExpected(imax, 2), s_ovf, },
+                { TUInt(imax), TUInt(3), OpExpected(imax, 3), s_ovf, },
+
+                { TUInt(imin), TUInt(imax - 3), OpExpected(imin, imax - 3), 0, },
+                { TUInt(imin), TUInt(imax - 2), OpExpected(imin, imax - 2), 0, },
+                { TUInt(imin), TUInt(imax - 1), OpExpected(imin, imax - 1), 0, },
+
+                { TUInt(imax), TUInt(imin + 1), OpExpected(imax, imin + 1), 0, },
+                { TUInt(imax), TUInt(imin + 2), OpExpected(imax, imin + 2), s_ovf, },
+                { TUInt(imax), TUInt(imin + 3), OpExpected(imax, imin + 3), s_ovf, },
+
+                #undef OpExpected
+            });
+
+            DoTest(TestType::Div, std::vector<Testcase<TInt>>
+            {
+                #define OpExpected(_v1, _v2)        TUInt(TUInt(_v1) / TUInt(_v2))
+                // v1, v2, result_expected, state_expected
+
+                { nan, 1, nan, s_inv, },
+
+                { TUInt(1), TUInt(2), OpExpected(1, 2), 0, },
+                { TUInt(1), TUInt(imax), OpExpected(1, imax), 0, },
+                { TUInt(-1), TUInt(imin), nan, s_inv | s_div, },
+
+                { TUInt(imin), TUInt(-3), OpExpected(imin, -3), 0, },
+                { TUInt(imin), TUInt(-2), OpExpected(imin, -2), 0, },
+                { TUInt(imin), TUInt(-1), OpExpected(imin, -1), 0, },
+                { TUInt(imin), TUInt(1), OpExpected(imin, 1), 0, },
+                { TUInt(imin), TUInt(2), OpExpected(imin, 2), 0, },
+                { TUInt(imin), TUInt(3), OpExpected(imin, 3), 0, },
+
+                { TUInt(imin), TUInt(imax), OpExpected(imin, imax), 0, },
+                { TUInt(imax), TUInt(imin), nan, s_inv | s_div, },
+
+                { TUInt(imax), TUInt(-3), OpExpected(imax, -3), 0, },
+                { TUInt(imax), TUInt(-2), OpExpected(imax, -2), 0, },
+                { TUInt(imax), TUInt(-1), OpExpected(imax, -1), 0, },
+                { TUInt(imax), TUInt(1), OpExpected(imax, 1), 0, },
+                { TUInt(imax), TUInt(2), OpExpected(imax, 2), 0, },
+                { TUInt(imax), TUInt(3), OpExpected(imax, 3), 0, },
+
+                { TUInt(imin), TUInt(imax - 3), OpExpected(imin, imax - 3), 0, },
+                { TUInt(imin), TUInt(imax - 2), OpExpected(imin, imax - 2), 0, },
+                { TUInt(imin), TUInt(imax - 1), OpExpected(imin, imax - 1), 0, },
+
+                { TUInt(imax), TUInt(imin + 1), OpExpected(imax, imin + 1), 0, },
+                { TUInt(imax), TUInt(imin + 2), OpExpected(imax, imin + 2), 0, },
+                { TUInt(imax), TUInt(imin + 3), OpExpected(imax, imin + 3), 0, },
+
+                { TUInt(imin), TUInt(0), nan, s_inv | s_div, },
+                { TUInt(imax), TUInt(0), nan, s_inv | s_div, },
+
+                #undef OpExpected
+            });
+
+            DoTest(TestType::Rem, std::vector<Testcase<TInt>>
+            {
+                #define OpExpected(_v1, _v2)        TUInt(TUInt(_v1) % TUInt(_v2))
+                // v1, v2, result_expected, state_expected
+
+                { nan, 1, nan, s_inv, },
+
+                { TUInt(1), TUInt(2), OpExpected(1, 2), 0, },
+                { TUInt(1), TUInt(imax), OpExpected(1, imax), 0, },
+                { TUInt(-1), TUInt(imin), nan, s_inv | s_div, },
+
+                { TUInt(imin), TUInt(-3), OpExpected(imin, -3), 0, },
+                { TUInt(imin), TUInt(-2), OpExpected(imin, -2), 0, },
+                { TUInt(imin), TUInt(-1), OpExpected(imin, -1), 0, },
+                { TUInt(imin), TUInt(1), OpExpected(imin, 1), 0, },
+                { TUInt(imin), TUInt(2), OpExpected(imin, 2), 0, },
+                { TUInt(imin), TUInt(3), OpExpected(imin, 3), 0, },
+
+                { TUInt(imin), TUInt(imax), OpExpected(imin, imax), 0, },
+                { TUInt(imax), TUInt(imin), nan, s_inv | s_div, },
+
+                { TUInt(imax), TUInt(-3), OpExpected(imax, -3), 0, },
+                { TUInt(imax), TUInt(-2), OpExpected(imax, -2), 0, },
+                { TUInt(imax), TUInt(-1), OpExpected(imax, -1), 0, },
+                { TUInt(imax), TUInt(1), OpExpected(imax, 1), 0, },
+                { TUInt(imax), TUInt(2), OpExpected(imax, 2), 0, },
+                { TUInt(imax), TUInt(3), OpExpected(imax, 3), 0, },
+
+                { TUInt(imin), TUInt(imax - 3), OpExpected(imin, imax - 3), 0, },
+                { TUInt(imin), TUInt(imax - 2), OpExpected(imin, imax - 2), 0, },
+                { TUInt(imin), TUInt(imax - 1), OpExpected(imin, imax - 1), 0, },
+
+                { TUInt(imax), TUInt(imin + 1), OpExpected(imax, imin + 1), 0, },
+                { TUInt(imax), TUInt(imin + 2), OpExpected(imax, imin + 2), 0, },
+                { TUInt(imax), TUInt(imin + 3), OpExpected(imax, imin + 3), 0, },
+
+                { TUInt(imin), TUInt(0), nan, s_inv | s_div, },
+                { TUInt(imax), TUInt(0), nan, s_inv | s_div, },
+
+                #undef OpExpected
+            });
+
+            DoTest(TestType::Shl, std::vector<Testcase<TInt>>
+            {
+                #define OpExpected(_v1, _v2)        TUInt(  \
+                    (TUInt(_v2) >= bitwidth) ? 0 : (        \
+                        (TUInt(_v1)) << TUInt(              \
+                            (TUInt(_v2)) & (bitwidth - 1)   \
+                        )                                   \
+                    ))
+                // v1, v2, result_expected, state_expected
+
+                { nan, 1, nan, s_inv, },
+
+                { TUInt(1), TUInt(2), OpExpected(1, 2), 0, },
+                { TUInt(1), TUInt(imax), OpExpected(1, imax), s_ovf, },
+                { TUInt(-1), TUInt(imin), OpExpected(-1, imin), 0, },
+
+                { TUInt(imin), TUInt(-3), OpExpected(imin, -3), 0, },
+                { TUInt(imin), TUInt(-2), OpExpected(imin, -2), 0, },
+                { TUInt(imin), TUInt(-1), OpExpected(imin, -1), 0, },
+                { TUInt(imin), TUInt(1), OpExpected(imin, 1), 0, },
+                { TUInt(imin), TUInt(2), OpExpected(imin, 2), 0, },
+                { TUInt(imin), TUInt(3), OpExpected(imin, 3), 0, },
+
+                { TUInt(imin), TUInt(imax), OpExpected(imin, imax), 0, },
+                { TUInt(imax), TUInt(imin), OpExpected(imax, imin), 0, },
+
+                { TUInt(imax), TUInt(-3), OpExpected(imax, -3), s_ovf, },
+                { TUInt(imax), TUInt(-2), OpExpected(imax, -2), s_ovf, },
+                { TUInt(imax), TUInt(-1), OpExpected(imax, -1), s_ovf, },
+                { TUInt(imax), TUInt(1), OpExpected(imax, 1), s_ovf, },
+                { TUInt(imax), TUInt(2), OpExpected(imax, 2), s_ovf, },
+                { TUInt(imax), TUInt(3), OpExpected(imax, 3), s_ovf, },
+
+                { TUInt(imin), TUInt(imax - 3), OpExpected(imin, imax - 3), 0, },
+                { TUInt(imin), TUInt(imax - 2), OpExpected(imin, imax - 2), 0, },
+                { TUInt(imin), TUInt(imax - 1), OpExpected(imin, imax - 1), 0, },
+
+                { TUInt(imax), TUInt(imin + 1), OpExpected(imax, imin + 1), s_ovf, },
+                { TUInt(imax), TUInt(imin + 2), OpExpected(imax, imin + 2), s_ovf, },
+                { TUInt(imax), TUInt(imin + 3), OpExpected(imax, imin + 3), s_ovf, },
+
+                { TInt(0), TInt(imax - 3), OpExpected(0, imax - 3), 0, },
+                { TInt(0), TInt(imax - 2), OpExpected(0, imax - 2), 0, },
+                { TInt(0), TInt(imax - 1), OpExpected(0, imax - 1), 0, },
+
+                { TInt(0), TInt(imin + 1), OpExpected(0, imin + 1), 0, },
+                { TInt(0), TInt(imin + 2), OpExpected(0, imin + 2), 0, },
+                { TInt(0), TInt(imin + 3), OpExpected(0, imin + 3), 0, },
+
+                #undef OpExpected
+            });
+
+            DoTest(TestType::Shr, std::vector<Testcase<TInt>>
+            {
+                #define OpExpected(_v1, _v2)        TUInt(  \
+                    (TUInt(_v2) >= bitwidth) ? 0 : (        \
+                        (TUInt(_v1)) >> TUInt(              \
+                            (TUInt(_v2)) & (bitwidth - 1)   \
+                        )                                   \
+                    ))
+                // v1, v2, result_expected, state_expected
+
+                { nan, 1, nan, s_inv, },
+
+                { TUInt(1), TUInt(2), OpExpected(1, 2), 0, },
+                { TUInt(1), TUInt(imax), OpExpected(1, imax), 0, },
+                { TUInt(-1), TUInt(imin), OpExpected(-1, imin), 0, },
+
+                { TUInt(imin), TUInt(-3), OpExpected(imin, -3), 0, },
+                { TUInt(imin), TUInt(-2), OpExpected(imin, -2), 0, },
+                { TUInt(imin), TUInt(-1), OpExpected(imin, -1), 0, },
+                { TUInt(imin), TUInt(1), OpExpected(imin, 1), 0, },
+                { TUInt(imin), TUInt(2), OpExpected(imin, 2), 0, },
+                { TUInt(imin), TUInt(3), OpExpected(imin, 3), 0, },
+
+                { TUInt(imin), TUInt(imax), OpExpected(imin, imax), 0, },
+                { TUInt(imax), TUInt(imin), OpExpected(imax, imin), 0, },
+
+                { TUInt(imax), TUInt(-3), OpExpected(imax, -3), 0, },
+                { TUInt(imax), TUInt(-2), OpExpected(imax, -2), 0, },
+                { TUInt(imax), TUInt(-1), OpExpected(imax, -1), 0, },
+                { TUInt(imax), TUInt(1), OpExpected(imax, 1), 0, },
+                { TUInt(imax), TUInt(2), OpExpected(imax, 2), 0, },
+                { TUInt(imax), TUInt(3), OpExpected(imax, 3), 0, },
+
+                { TUInt(imin), TUInt(imax - 3), OpExpected(imin, imax - 3), 0, },
+                { TUInt(imin), TUInt(imax - 2), OpExpected(imin, imax - 2), 0, },
+                { TUInt(imin), TUInt(imax - 1), OpExpected(imin, imax - 1), 0, },
+
+                { TUInt(imax), TUInt(imin + 1), OpExpected(imax, imin + 1), 0, },
+                { TUInt(imax), TUInt(imin + 2), OpExpected(imax, imin + 2), 0, },
+                { TUInt(imax), TUInt(imin + 3), OpExpected(imax, imin + 3), 0, },
+
+                #undef OpExpected
+            });
+
+            DoTest(TestType::And, std::vector<Testcase<TInt>>
+            {
+                #define OpExpected(_v1, _v2)        TUInt(TUInt(_v1) & TUInt(_v2))
+                // v1, v2, result_expected, state_expected
+
+                { nan, 1, nan, s_inv, },
+
+                { TUInt(1), TUInt(2), OpExpected(1, 2), 0, },
+                { TUInt(1), TUInt(imax), OpExpected(1, imax), 0, },
+                { TUInt(-1), TUInt(imin), OpExpected(-1, imin), 0, },
+
+                { TUInt(imin), TUInt(-3), OpExpected(imin, -3), 0, },
+                { TUInt(imin), TUInt(-2), OpExpected(imin, -2), 0, },
+                { TUInt(imin), TUInt(-1), OpExpected(imin, -1), 0, },
+                { TUInt(imin), TUInt(1), OpExpected(imin, 1), 0, },
+                { TUInt(imin), TUInt(2), OpExpected(imin, 2), 0, },
+                { TUInt(imin), TUInt(3), OpExpected(imin, 3), 0, },
+
+                { TUInt(imin), TUInt(imax), OpExpected(imin, imax), 0, },
+                { TUInt(imax), TUInt(imin), OpExpected(imax, imin), 0, },
+
+                { TUInt(imax), TUInt(-3), OpExpected(imax, -3), 0, },
+                { TUInt(imax), TUInt(-2), OpExpected(imax, -2), 0, },
+                { TUInt(imax), TUInt(-1), OpExpected(imax, -1), 0, },
+                { TUInt(imax), TUInt(1), OpExpected(imax, 1), 0, },
+                { TUInt(imax), TUInt(2), OpExpected(imax, 2), 0, },
+                { TUInt(imax), TUInt(3), OpExpected(imax, 3), 0, },
+
+                { TUInt(imin), TUInt(imax - 3), OpExpected(imin, imax - 3), 0, },
+                { TUInt(imin), TUInt(imax - 2), OpExpected(imin, imax - 2), 0, },
+                { TUInt(imin), TUInt(imax - 1), OpExpected(imin, imax - 1), 0, },
+
+                { TUInt(imax), TUInt(imin + 1), OpExpected(imax, imin + 1), 0, },
+                { TUInt(imax), TUInt(imin + 2), OpExpected(imax, imin + 2), 0, },
+                { TUInt(imax), TUInt(imin + 3), OpExpected(imax, imin + 3), 0, },
+
+                #undef OpExpected
+            });
+
+            DoTest(TestType::Or, std::vector<Testcase<TInt>>
+            {
+                #define OpExpected(_v1, _v2)        TUInt(TUInt(_v1) | TUInt(_v2))
+                // v1, v2, result_expected, state_expected
+
+                { nan, 1, nan, s_inv, },
+
+                { TUInt(1), TUInt(2), OpExpected(1, 2), 0, },
+                { TUInt(1), TUInt(imax), OpExpected(1, imax), 0, },
+                { TUInt(-1), TUInt(imin), OpExpected(-1, imin), 0, },
+
+                { TUInt(imin), TUInt(-3), OpExpected(imin, -3), 0, },
+                { TUInt(imin), TUInt(-2), OpExpected(imin, -2), 0, },
+                { TUInt(imin), TUInt(-1), OpExpected(imin, -1), 0, },
+                { TUInt(imin), TUInt(1), OpExpected(imin, 1), 0, },
+                { TUInt(imin), TUInt(2), OpExpected(imin, 2), 0, },
+                { TUInt(imin), TUInt(3), OpExpected(imin, 3), 0, },
+
+                { TUInt(imin), TUInt(imax), OpExpected(imin, imax), 0, },
+                { TUInt(imax), TUInt(imin), OpExpected(imax, imin), 0, },
+
+                { TUInt(imax), TUInt(-3), OpExpected(imax, -3), 0, },
+                { TUInt(imax), TUInt(-2), OpExpected(imax, -2), 0, },
+                { TUInt(imax), TUInt(-1), OpExpected(imax, -1), 0, },
+                { TUInt(imax), TUInt(1), OpExpected(imax, 1), 0, },
+                { TUInt(imax), TUInt(2), OpExpected(imax, 2), 0, },
+                { TUInt(imax), TUInt(3), OpExpected(imax, 3), 0, },
+
+                { TUInt(imin), TUInt(imax - 3), OpExpected(imin, imax - 3), 0, },
+                { TUInt(imin), TUInt(imax - 2), OpExpected(imin, imax - 2), 0, },
+                { TUInt(imin), TUInt(imax - 1), OpExpected(imin, imax - 1), 0, },
+
+                { TUInt(imax), TUInt(imin + 1), OpExpected(imax, imin + 1), 0, },
+                { TUInt(imax), TUInt(imin + 2), OpExpected(imax, imin + 2), 0, },
+                { TUInt(imax), TUInt(imin + 3), OpExpected(imax, imin + 3), 0, },
+
+                #undef OpExpected
+            });
+
+            DoTest(TestType::Xor, std::vector<Testcase<TInt>>
+            {
+                #define OpExpected(_v1, _v2)        TUInt(TUInt(_v1) ^ TUInt(_v2))
+                // v1, v2, result_expected, state_expected
+
+                { nan, 1, nan, s_inv, },
+
+                { TUInt(1), TUInt(2), OpExpected(1, 2), 0, },
+                { TUInt(1), TUInt(imax), OpExpected(1, imax), 0, },
+                { TUInt(-1), TUInt(imin), OpExpected(-1, imin), 0, },
+
+                { TUInt(imin), TUInt(-3), OpExpected(imin, -3), 0, },
+                { TUInt(imin), TUInt(-2), OpExpected(imin, -2), 0, },
+                { TUInt(imin), TUInt(-1), OpExpected(imin, -1), 0, },
+                { TUInt(imin), TUInt(1), OpExpected(imin, 1), 0, },
+                { TUInt(imin), TUInt(2), OpExpected(imin, 2), 0, },
+                { TUInt(imin), TUInt(3), OpExpected(imin, 3), 0, },
+
+                { TUInt(imin), TUInt(imax), OpExpected(imin, imax), 0, },
+                { TUInt(imax), TUInt(imin), OpExpected(imax, imin), 0, },
+
+                { TUInt(imax), TUInt(-3), OpExpected(imax, -3), 0, },
+                { TUInt(imax), TUInt(-2), OpExpected(imax, -2), 0, },
+                { TUInt(imax), TUInt(-1), OpExpected(imax, -1), 0, },
+                { TUInt(imax), TUInt(1), OpExpected(imax, 1), 0, },
+                { TUInt(imax), TUInt(2), OpExpected(imax, 2), 0, },
+                { TUInt(imax), TUInt(3), OpExpected(imax, 3), 0, },
+
+                { TUInt(imin), TUInt(imax - 3), OpExpected(imin, imax - 3), 0, },
+                { TUInt(imin), TUInt(imax - 2), OpExpected(imin, imax - 2), 0, },
+                { TUInt(imin), TUInt(imax - 1), OpExpected(imin, imax - 1), 0, },
+
+                { TUInt(imax), TUInt(imin + 1), OpExpected(imax, imin + 1), 0, },
+                { TUInt(imax), TUInt(imin + 2), OpExpected(imax, imin + 2), 0, },
+                { TUInt(imax), TUInt(imin + 3), OpExpected(imax, imin + 3), 0, },
+
+                #undef OpExpected
+            });
+
+            DoTest(TestType::Neg, std::vector<Testcase<TInt>>
+            {
+                #define OpExpected(_v1)         TUInt(-TUInt(_v1))
+                // v1, v2, result_expected, state_expected
+
+                { nan, 0, nan, s_inv, },
+
+                { TUInt(1), 0, OpExpected(1), 0, },
+                { TUInt(-1), 0, OpExpected(-1), 0, },
+
+                { TUInt(imin - 3), 0, OpExpected(imin - 3), 0, },
+                { TUInt(imin - 2), 0, OpExpected(imin - 2), 0, },
+                { TUInt(imin - 1), 0, OpExpected(imin - 1), 0, },
+                { TUInt(imin), 0, OpExpected(imin), 0, },
+                { TUInt(imin + 1), 0, OpExpected(imin + 1), 0, },
+                { TUInt(imin + 2), 0, OpExpected(imin + 2), 0, },
+                { TUInt(imin + 3), 0, OpExpected(imin + 3), 0, },
+
+                { TUInt(imax - 3), 0, OpExpected(imax - 3), 0, },
+                { TUInt(imax - 2), 0, OpExpected(imax - 2), 0, },
+                { TUInt(imax - 1), 0, OpExpected(imax - 1), 0, },
+                { TUInt(imax), 0, OpExpected(imax), 0, },
+                { TUInt(imax + 1), 0, OpExpected(imax + 1), 0, },
+                { TUInt(imax + 2), 0, OpExpected(imax + 2), 0, },
+                { TUInt(imax + 3), 0, OpExpected(imax + 3), 0, },
+
+                #undef OpExpected
+            });
+
+            DoTest(TestType::Not, std::vector<Testcase<TInt>>
+            {
+                #define OpExpected(_v1)         TUInt(~TUInt(_v1))
+                // v1, v2, result_expected, state_expected
+
+                { nan, 0, nan, s_inv, },
+
+                { TUInt(1), 0, OpExpected(1), 0, },
+                { TUInt(-1), 0, OpExpected(-1), 0, },
+
+                { TUInt(imin - 3), 0, OpExpected(imin - 3), 0, },
+                { TUInt(imin - 2), 0, OpExpected(imin - 2), 0, },
+                { TUInt(imin - 1), 0, OpExpected(imin - 1), 0, },
+                { TUInt(imin), 0, OpExpected(imin), 0, },
+                { TUInt(imin + 1), 0, OpExpected(imin + 1), 0, },
+                { TUInt(imin + 2), 0, OpExpected(imin + 2), 0, },
+                { TUInt(imin + 3), 0, OpExpected(imin + 3), 0, },
+
+                { TUInt(imax - 3), 0, OpExpected(imax - 3), 0, },
+                { TUInt(imax - 2), 0, OpExpected(imax - 2), 0, },
+                { TUInt(imax - 1), 0, OpExpected(imax - 1), 0, },
+                { TUInt(imax), 0, OpExpected(imax), 0, },
+                { TUInt(imax + 1), 0, OpExpected(imax + 1), 0, },
+                { TUInt(imax + 2), 0, OpExpected(imax + 2), 0, },
+                { TUInt(imax + 3), 0, OpExpected(imax + 3), 0, },
+
+                #undef OpExpected
+            });
+
+            DoTest(TestType::Inc, std::vector<Testcase<TInt>>
+            {
+                #define OpExpected(_v1)         TUInt(TUInt(_v1) + 1)
+                // v1, v2, result_expected, state_expected
+
+                { nan, 0, nan, s_inv, },
+
+                { TUInt(1), 0, OpExpected(1), 0, },
+                { TUInt(-1), 0, OpExpected(-1), s_ovf, },
+
+                { TUInt(imin - 3), 0, OpExpected(imin - 3), 0, },
+                { TUInt(imin - 2), 0, OpExpected(imin - 2), 0, },
+                { TUInt(imin - 1), 0, OpExpected(imin - 1), s_ovf, },
+                { TUInt(imin), 0, OpExpected(imin), 0, },
+                { TUInt(imin + 1), 0, OpExpected(imin + 1), 0, },
+                { TUInt(imin + 2), 0, OpExpected(imin + 2), 0, },
+                { TUInt(imin + 3), 0, OpExpected(imin + 3), 0, },
+
+                { TUInt(imax - 3), 0, OpExpected(imax - 3), 0, },
+                { TUInt(imax - 2), 0, OpExpected(imax - 2), 0, },
+                { TUInt(imax - 1), 0, OpExpected(imax - 1), 0, },
+                { TUInt(imax), 0, OpExpected(imax), s_ovf, },
+                { TUInt(imax + 1), 0, OpExpected(imax + 1), 0, },
+                { TUInt(imax + 2), 0, OpExpected(imax + 2), 0, },
+                { TUInt(imax + 3), 0, OpExpected(imax + 3), 0, },
+
+                #undef OpExpected
+            });
+
+            DoTest(TestType::Dec, std::vector<Testcase<TInt>>
+            {
+                #define OpExpected(_v1)         TUInt(TUInt(_v1) - 1)
+                // v1, v2, result_expected, state_expected
+
+                { nan, 0, nan, s_inv, },
+
+                { TUInt(1), 0, OpExpected(1), 0, },
+                { TUInt(-1), 0, OpExpected(-1), 0, },
+
+                { TUInt(imin - 3), 0, OpExpected(imin - 3), 0, },
+                { TUInt(imin - 2), 0, OpExpected(imin - 2), 0, },
+                { TUInt(imin - 1), 0, OpExpected(imin - 1), 0, },
+                { TUInt(imin), 0, OpExpected(imin), s_ovf, },
+                { TUInt(imin + 1), 0, OpExpected(imin + 1), 0, },
+                { TUInt(imin + 2), 0, OpExpected(imin + 2), 0, },
+                { TUInt(imin + 3), 0, OpExpected(imin + 3), 0, },
+
+                { TUInt(imax - 3), 0, OpExpected(imax - 3), 0, },
+                { TUInt(imax - 2), 0, OpExpected(imax - 2), 0, },
+                { TUInt(imax - 1), 0, OpExpected(imax - 1), 0, },
+                { TUInt(imax), 0, OpExpected(imax), 0, },
+                { TUInt(imax + 1), 0, OpExpected(imax + 1), s_ovf, },
+                { TUInt(imax + 2), 0, OpExpected(imax + 2), 0, },
+                { TUInt(imax + 3), 0, OpExpected(imax + 3), 0, },
+
+                #undef OpExpected
+            });
+        }
+#include "pop_warnings.h"
+
+        TEST_METHOD(Integer_MasterTest)
+        {
+            DoMultipleTest<int8_t>();
+            DoMultipleTest<int16_t>();
+            DoMultipleTest<int32_t>();
+            DoMultipleTest<int64_t>();
+
+            DoMultipleTest<uint8_t>();
+            DoMultipleTest<uint16_t>();
+            DoMultipleTest<uint32_t>();
+            DoMultipleTest<uint64_t>();
+        }
+
     };
 
     TEST_CLASS(MiscTest)

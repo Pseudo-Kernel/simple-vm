@@ -417,7 +417,7 @@ void test_integer()
     print(int_param(t));
     print(int_param(nan2));
 
-    #undef int_param__
+    #undef int_param
 }
 
 int main()
