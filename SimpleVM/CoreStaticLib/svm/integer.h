@@ -127,8 +127,8 @@ public:
             return{};
 
         TUnsigned v1 = Value_;
-        TUnsigned v2 = ~Value.Value_ + 1;
-        TUnsigned vr = v1 + v2;
+        TUnsigned v2 = Value.Value_;
+        TUnsigned vr = v1 + ~v2 + 1;
 
         TIntegerState State = 0;
         if (v1 < v2)
@@ -235,7 +235,8 @@ public:
         if (v2 >= (sizeof(T) << 3))
         {
             vr = 0;
-            State |= StateFlags::Overflow;
+            if (v1 != 0)
+                State |= StateFlags::Overflow;
         }
         else
         {
@@ -642,7 +643,14 @@ public:
         TUnsigned res_hi = (a4 << half_width) | (a3 & half_mask);
 
         TIntegerState State = 0;
-        if (res_hi || (res_lo & SignBit))
+
+        if (!res_hi && res_lo == SignBit)
+        {
+            // special case
+            if (!ResultSigned)
+                State |= StateFlags::Overflow;
+        }
+        else if (res_hi || (res_lo & SignBit))
             State |= StateFlags::Overflow;
 
         TUnsigned signed_res_lo = res_lo;
@@ -650,18 +658,15 @@ public:
 
         if (ResultSigned)
         {
-            //
-            // Same as:
-            // IF !res_lo
-            //   res_hi = ~res_hi + 1;  // carry
-            // ELSE
-            //   res_lo = ~res_lo + 1;
-            //   res_hi = ~res_hi;      // no carry
-            // FI
-            //
-
-            signed_res_hi = ~res_hi + !res_lo; // update highword first
-            signed_res_lo = ~res_lo + !!res_lo;
+            if (res_lo)
+            {
+                signed_res_hi = ~res_hi; // no carry
+                signed_res_lo = ~res_lo + 1;
+            }
+            else
+            {
+                signed_res_hi = ~res_hi + 1; // carry
+            }
         }
 
         TUnsigned vr = signed_res_lo;
@@ -714,10 +719,6 @@ public:
 
         if (!v2)
             return BaseInteger<T>(0, StateFlags::Invalid | StateFlags::DivideByZero);
-
-        // example. x = -128 (80), y = -1 (FF) => x / y = 128 (overflow) => -128;
-        if (v1 == SignBit && v2 == static_cast<TUnsigned>(~0))
-            State |= StateFlags::Overflow;
 
         bool ResultSigned = !!((v1 ^ v2) & SignBit);
 
@@ -781,19 +782,19 @@ public:
 
         TIntegerState State = 0;
 
+        if (v2 & SignBit) // v2 < 0
+            return BaseInteger<T>(0, StateFlags::Invalid);
+
         if (v2 >= (sizeof(T) << 3))
         {
             vr = 0;
-            State |= StateFlags::Overflow;
+            if (v1 != 0)
+                State |= StateFlags::Overflow;
         }
         else
         {
-            if (v2 & SignBit) // v2 < 0
-                return BaseInteger<T>(0, StateFlags::Invalid);
-
             vr = v1 << v2;
-
-            if (v1 != (vr >> v2))
+            if (v1 != (vr >> v2) || ((vr ^ v1) & SignBit))
                 State |= StateFlags::Overflow;
         }
 
@@ -815,6 +816,9 @@ public:
 
         TIntegerState State = 0;
 
+        if (v2 & SignBit) // v2 < 0
+            return BaseInteger<T>(0, StateFlags::Invalid);
+
         if (v2 >= (sizeof(T) << 3))
         {
             if (v1 & SignBit) // v1 < 0
@@ -828,9 +832,6 @@ public:
         }
         else
         {
-            if (v2 & SignBit) // v2 < 0
-                return BaseInteger<T>(0, StateFlags::Invalid);
-
             vr = v1 >> v2;
 
             if (v1 & SignBit)

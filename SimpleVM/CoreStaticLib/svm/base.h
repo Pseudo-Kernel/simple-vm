@@ -515,18 +515,16 @@ namespace Base
 
         if (Negative)
         {
-            //
-            // Same as:
-            // IF !res_lo
-            //   res_hi = ~res_hi + 1;  // carry
-            // ELSE
-            //   res_lo = ~res_lo + 1;
-            //   res_hi = ~res_hi;      // no carry
-            // FI
-            //
+            if (res_lo)
+            {
+                res_hi = ~res_hi; // no carry
+                res_lo = ~res_lo + 1;
+            }
+            else
+            {
+                res_hi = ~res_hi + 1; // carry
+            }
 
-            res_hi = ~res_hi + !res_lo; // update highword first
-            res_lo = ~res_lo + !!res_lo;
         }
 
         if (h)
