@@ -137,8 +137,73 @@ public:
         return BaseInteger<T>(vr, State);
     }
 
-    Integer<T> Multiply(const Integer<T> Value) const
+    Integer<T> Multiply(const Integer<T> Value, Integer<T>* HighPart = nullptr) const
     {
+#if 1
+        if (Invalid() || Value.Invalid())
+            return{};
+
+        constexpr const TUnsigned SignBit =
+            static_cast<TUnsigned>(1) << ((sizeof(T) << 3) - 1);
+
+        TUnsigned v1 = Value_;
+        TUnsigned v2 = Value.Value_;
+
+        //
+        // do the multiplication here...
+        //
+
+        constexpr const TUnsigned full_width = sizeof(T) << 3;
+        constexpr const TUnsigned half_width = full_width >> 1;
+        constexpr const TUnsigned full_mask = ~0;
+        constexpr const TUnsigned half_mask = full_mask >> half_width;
+
+        TUnsigned lo1 = static_cast<TUnsigned>(v1 & half_mask);   // half-width
+        TUnsigned lo2 = static_cast<TUnsigned>(v2 & half_mask);   // half-width
+        TUnsigned hi1 = static_cast<TUnsigned>(v1 >> half_width); // half-width
+        TUnsigned hi2 = static_cast<TUnsigned>(v2 >> half_width); // half-width
+
+        TUnsigned t1 = static_cast<TUnsigned>(lo1) * lo2; // full-width
+        TUnsigned t2 = static_cast<TUnsigned>(lo1) * hi2; // full-width
+        TUnsigned t3 = static_cast<TUnsigned>(lo2) * hi1; // full-width
+        TUnsigned t4 = static_cast<TUnsigned>(hi1) * hi2; // full-width
+
+        // 
+        // example. 64-bit multiplication
+        //     DDDDDDDD`dddddddd                    [t4]
+        //              CCCCCCCC`cccccccc           [t3]
+        //              BBBBBBBB`bbbbbbbb           [t2]
+        //  +)                   AAAAAAAA`aaaaaaaa  [t1]
+        // ----------------------------------------
+        //      t4.h      t4.l     t3.l     t1.l
+        //      carry2    t3.h     t2.l
+        //                t2.h     t1.h
+        //                carry1
+        // 
+        // carry1 = carry(t1.h + t2.l + t3.l)
+        // carry2 = carry(t2.h + t3.h + t4.l + carry1)
+        // 
+
+        TUnsigned a1 = t1 & half_mask; // 1st half (lowest)
+        TUnsigned a2 = (t1 >> half_width) + (t2 & half_mask) + (t3 & half_mask); // 2nd half with carry
+        TUnsigned a3 = (a2 >> half_width) + (t2 >> half_width) + (t3 >> half_width) + (t4 & half_mask); // 3rd half with carry
+        TUnsigned a4 = (a3 >> half_width) + (t4 >> half_width); // 4rd half (highest)
+
+        TUnsigned res_lo = (a2 << half_width) | a1;
+        TUnsigned res_hi = (a4 << half_width) | (a3 & half_mask);
+
+        TIntegerState State = 0;
+
+        if (res_hi)
+            State |= StateFlags::Overflow;
+
+        TUnsigned vr = res_lo;
+
+        if (HighPart)
+            *HighPart = res_hi;
+
+        return BaseInteger<T>(vr, State);
+#else
         if (Invalid() || Value.Invalid())
             return{};
 
@@ -151,6 +216,7 @@ public:
             State |= StateFlags::Overflow;
 
         return BaseInteger<T>(vr, State);
+#endif
     }
 
     Integer<T> Divide(const Integer<T> Value) const
@@ -582,7 +648,7 @@ public:
         return BaseInteger<T>(vr, State);
     }
 
-    Integer<T> Multiply(const Integer<T> Value) const
+    Integer<T> Multiply(const Integer<T> Value, Integer<T>* HighPart = nullptr) const
     {
         if (Invalid() || Value.Invalid())
             return{};
@@ -670,6 +736,9 @@ public:
         }
 
         TUnsigned vr = signed_res_lo;
+
+        if (HighPart)
+            *HighPart = signed_res_hi;
 
         return BaseInteger<T>(vr, State);
     }
