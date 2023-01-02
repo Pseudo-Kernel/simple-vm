@@ -856,10 +856,17 @@ public:
         if (Invalid())
             return{};
 
+        constexpr const TUnsigned SignBit =
+            static_cast<TUnsigned>(1) << ((sizeof(T) << 3) - 1);
+
         TUnsigned v = Value_;
         TUnsigned vr = ~v + 1;
 
-        return BaseInteger<T>(vr);
+        TIntegerState State = 0;
+        if (v == SignBit) // cannot represent -int_min in range [int_min, int_max] where T is signed
+            State |= StateFlags::Overflow;
+
+        return BaseInteger<T>(vr, State);
     }
 
     bool Equal(const Integer<T> rhs, bool CompareInvalidState = false)

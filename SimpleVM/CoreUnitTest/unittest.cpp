@@ -1774,7 +1774,7 @@ namespace CoreUnitTest
                 { TInt(imin - 3), 0, OpExpected(imin - 3), 0, },
                 { TInt(imin - 2), 0, OpExpected(imin - 2), 0, },
                 { TInt(imin - 1), 0, OpExpected(imin - 1), 0, },
-                { TInt(imin), 0, OpExpected(imin), 0, },
+                { TInt(imin), 0, OpExpected(imin), s_ovf, },
                 { TInt(imin + 1), 0, OpExpected(imin + 1), 0, },
                 { TInt(imin + 2), 0, OpExpected(imin + 2), 0, },
                 { TInt(imin + 3), 0, OpExpected(imin + 3), 0, },
@@ -1783,7 +1783,7 @@ namespace CoreUnitTest
                 { TInt(imax - 2), 0, OpExpected(imax - 2), 0, },
                 { TInt(imax - 1), 0, OpExpected(imax - 1), 0, },
                 { TInt(imax), 0, OpExpected(imax), 0, },
-                { TInt(imax + 1), 0, OpExpected(imax + 1), 0, },
+                { TInt(imax + 1), 0, OpExpected(imax + 1), s_ovf, },
                 { TInt(imax + 2), 0, OpExpected(imax + 2), 0, },
                 { TInt(imax + 3), 0, OpExpected(imax + 3), 0, },
 
