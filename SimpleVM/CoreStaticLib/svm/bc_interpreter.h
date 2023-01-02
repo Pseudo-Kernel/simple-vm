@@ -2,6 +2,7 @@
 #pragma once
 
 #include "base.h"
+#include "integer.h"
 #include "vmmemory.h"
 
 namespace VM_NAMESPACE
@@ -26,6 +27,27 @@ namespace VM_NAMESPACE
             Context.ExceptionState = State;
             Context.NextIP = Context.IP;
             return true;
+        }
+
+        static ExceptionState::T IntegerStateToException(uint8_t IntegerState, uint32_t PrefixBits)
+        {
+            if (IntegerState & Integer<int8_t>::StateFlags::Invalid)
+            {
+                if (IntegerState & Integer<int8_t>::StateFlags::DivideByZero)
+                {
+                    return ExceptionState::T::IntegerDivideByZero;
+                }
+
+                return ExceptionState::T::InvalidInstruction;
+            }
+
+            if ((IntegerState & Integer<int8_t>::StateFlags::Overflow) &&
+                (PrefixBits & InstructionPrefixBits::T::CheckOverflow))
+            {
+                return ExceptionState::T::IntegerOverflow;
+            }
+
+            return ExceptionState::T::None;
         }
 
         int Execute(VMExecutionContext& Context, int Count)
@@ -1058,8 +1080,39 @@ namespace VM_NAMESPACE
 
         template <
             typename T,
-            typename = std::enable_if_t<
-            std::is_integral<T>::value || std::is_floating_point<T>::value>>
+            std::enable_if_t<std::is_integral<T>::value, bool> = true>
+            inline static bool Inst_Add(VMExecutionContext& Context)
+        {
+            T Op1{}, Op2{};
+
+            if (!Context.Stack.Pop(&Op2) ||
+                !Context.Stack.Pop(&Op1))
+            {
+                RaiseException(Context, ExceptionState::T::StackOverflow);
+                return false;
+            }
+
+            Integer<T> Value = Integer<T>(Op1) + Integer<T>(Op2);
+
+            ExceptionState::T  Exception = IntegerStateToException(Value.State(), Context.FetchedPrefix);
+            if (Exception != ExceptionState::T::None)
+            {
+                RaiseException(Context, Exception);
+                return false;
+            }
+
+            if (!Context.Stack.Push(Value.Value()))
+            {
+                RaiseException(Context, ExceptionState::T::StackOverflow);
+                return false;
+            }
+
+            return true;
+        }
+
+        template <
+            typename T,
+            std::enable_if_t<std::is_floating_point<T>::value, bool> = true>
             inline static bool Inst_Add(VMExecutionContext& Context)
         {
             T Op1{}, Op2{};
@@ -1084,8 +1137,39 @@ namespace VM_NAMESPACE
 
         template <
             typename T,
-            typename = std::enable_if_t<
-            std::is_integral<T>::value || std::is_floating_point<T>::value>>
+            std::enable_if_t<std::is_integral<T>::value, bool> = true>
+            inline static bool Inst_Sub(VMExecutionContext& Context)
+        {
+            T Op1{}, Op2{};
+
+            if (!Context.Stack.Pop(&Op2) ||
+                !Context.Stack.Pop(&Op1))
+            {
+                RaiseException(Context, ExceptionState::T::StackOverflow);
+                return false;
+            }
+
+            Integer<T> Value = Integer<T>(Op1) - Integer<T>(Op2);
+
+            ExceptionState::T  Exception = IntegerStateToException(Value.State(), Context.FetchedPrefix);
+            if (Exception != ExceptionState::T::None)
+            {
+                RaiseException(Context, Exception);
+                return false;
+            }
+
+            if (!Context.Stack.Push(Value.Value()))
+            {
+                RaiseException(Context, ExceptionState::T::StackOverflow);
+                return false;
+            }
+
+            return true;
+        }
+
+        template <
+            typename T,
+            std::enable_if_t<std::is_floating_point<T>::value, bool> = true>
             inline static bool Inst_Sub(VMExecutionContext& Context)
         {
             T Op1{}, Op2{};
@@ -1110,8 +1194,39 @@ namespace VM_NAMESPACE
 
         template <
             typename T,
-            typename = std::enable_if_t<
-            std::is_integral<T>::value || std::is_floating_point<T>::value>>
+            std::enable_if_t<std::is_integral<T>::value, bool> = true>
+            inline static bool Inst_Mul(VMExecutionContext& Context)
+        {
+            T Op1{}, Op2{};
+
+            if (!Context.Stack.Pop(&Op2) ||
+                !Context.Stack.Pop(&Op1))
+            {
+                RaiseException(Context, ExceptionState::T::StackOverflow);
+                return false;
+            }
+
+            Integer<T> Value = Integer<T>(Op1) * Integer<T>(Op2);
+
+            ExceptionState::T  Exception = IntegerStateToException(Value.State(), Context.FetchedPrefix);
+            if (Exception != ExceptionState::T::None)
+            {
+                RaiseException(Context, Exception);
+                return false;
+            }
+
+            if (!Context.Stack.Push(Value.Value()))
+            {
+                RaiseException(Context, ExceptionState::T::StackOverflow);
+                return false;
+            }
+
+            return true;
+        }
+
+        template <
+            typename T,
+            std::enable_if_t<std::is_floating_point<T>::value, bool> = true>
             inline static bool Inst_Mul(VMExecutionContext& Context)
         {
             T Op1{}, Op2{};
@@ -1136,9 +1251,7 @@ namespace VM_NAMESPACE
 
         template <
             typename T,
-            std::enable_if_t<
-            std::is_integral<T>::value &&
-            sizeof(T) == sizeof(int32_t), bool> = true>
+            typename = std::enable_if_t<std::is_integral<T>::value>>
             inline static bool Inst_Mulh(VMExecutionContext& Context)
         {
             T Op1{}, Op2{};
@@ -1150,70 +1263,17 @@ namespace VM_NAMESPACE
                 return false;
             }
 
-            using WideType = std::conditional_t<std::is_signed<T>::value, int64_t, uint64_t>;
+            Integer<T> Result;
+            Integer<T>(Op1).Multiply(Op2, &Result);
 
-            WideType Value = static_cast<WideType>(Op1) * Op2;
-            T Result = static_cast<T>(Value >> 0x20);
-
-            if (!Context.Stack.Push(Result))
+            ExceptionState::T  Exception = IntegerStateToException(Result.State(), Context.FetchedPrefix);
+            if (Exception != ExceptionState::T::None)
             {
-                RaiseException(Context, ExceptionState::T::StackOverflow);
+                RaiseException(Context, Exception);
                 return false;
             }
 
-            return true;
-        }
-
-        template <
-            typename T,
-            std::enable_if_t<
-            std::is_integral<T>::value&&
-            std::is_signed<T>::value &&
-            sizeof(T) == sizeof(int64_t), bool> = true>
-            inline static bool Inst_Mulh(VMExecutionContext& Context)
-        {
-            T Op1{}, Op2{};
-
-            if (!Context.Stack.Pop(&Op2) ||
-                !Context.Stack.Pop(&Op1))
-            {
-                RaiseException(Context, ExceptionState::T::StackOverflow);
-                return false;
-            }
-
-            int64_t ResultHi = 0;
-            uint64_t ResultLow = Base::Int64x64To128(Op1, Op2, &ResultHi);
-
-            if (!Context.Stack.Push(ResultHi))
-            {
-                RaiseException(Context, ExceptionState::T::StackOverflow);
-                return false;
-            }
-
-            return true;
-        }
-
-        template <
-            typename T,
-            std::enable_if_t<
-            std::is_integral<T>::value &&
-            !std::is_signed<T>::value &&
-            sizeof(T) == sizeof(int64_t), bool> = true>
-            inline static bool Inst_Mulh(VMExecutionContext& Context)
-        {
-            T Op1{}, Op2{};
-
-            if (!Context.Stack.Pop(&Op2) ||
-                !Context.Stack.Pop(&Op1))
-            {
-                RaiseException(Context, ExceptionState::T::StackOverflow);
-                return false;
-            }
-
-            uint64_t ResultHi = 0;
-            uint64_t ResultLow = Base::UInt64x64To128(Op1, Op2, &ResultHi);
-
-            if (!Context.Stack.Push(ResultHi))
+            if (!Context.Stack.Push(Result.Value()))
             {
                 RaiseException(Context, ExceptionState::T::StackOverflow);
                 return false;
@@ -1236,15 +1296,16 @@ namespace VM_NAMESPACE
                 return false;
             }
 
-            if (!Op2)
+            Integer<T> Value = Integer<T>(Op1) / Integer<T>(Op2);
+
+            ExceptionState::T  Exception = IntegerStateToException(Value.State(), Context.FetchedPrefix);
+            if (Exception != ExceptionState::T::None)
             {
-                RaiseException(Context, ExceptionState::T::IntegerDivideByZero);
+                RaiseException(Context, Exception);
                 return false;
             }
 
-            T Value = Op1 / Op2;
-
-            if (!Context.Stack.Push(Value))
+            if (!Context.Stack.Push(Value.Value()))
             {
                 RaiseException(Context, ExceptionState::T::StackOverflow);
                 return false;
@@ -1299,27 +1360,16 @@ namespace VM_NAMESPACE
             //   Mod(Op1, Op2) = Sgn(Op1*Op2) * Mod(|Op1|, |Op2|) [Case 3. if Op1 < 0 or Op2 < 0]
             // 
 
-            if (!Op2)
+            Integer<T> Value = Integer<T>(Op1) % Integer<T>(Op2);
+
+            ExceptionState::T  Exception = IntegerStateToException(Value.State(), Context.FetchedPrefix);
+            if (Exception != ExceptionState::T::None)
             {
-                // Case 2 (undefined)
-                RaiseException(Context, ExceptionState::T::IntegerDivideByZero);
+                RaiseException(Context, Exception);
                 return false;
             }
 
-            using SignedT = std::make_signed<T>::type;
-
-            // Handle case 1, 3
-            T AbsOp1 = Op1 < 0 ? -static_cast<SignedT>(Op1) : Op1;
-            T AbsOp2 = Op2 < 0 ? -static_cast<SignedT>(Op2) : Op2;
-            T Value = AbsOp1 - AbsOp1 / AbsOp2; //AbsOp1 % AbsOp2;
-
-            if (bool ResultNegative = (Op1 < 0) != (Op2 < 0))
-            {
-                DASSERT(std::is_signed<T>::value);
-                Value = -static_cast<SignedT>(Value);
-            }
-
-            if (!Context.Stack.Push(Value))
+            if (!Context.Stack.Push(Value.Value()))
             {
                 RaiseException(Context, ExceptionState::T::StackOverflow);
                 return false;
@@ -1406,24 +1456,16 @@ namespace VM_NAMESPACE
             // where #INV means invalid instruction exception.
             //
 
-            T Value = 0;
-            constexpr const T BitLength = sizeof(T) * 8;
-            if (0 <= Op2 && Op2 < BitLength)
+            Integer<T> Value = Integer<T>(Op1) << Integer<T>(Op2);
+
+            ExceptionState::T  Exception = IntegerStateToException(Value.State(), Context.FetchedPrefix);
+            if (Exception != ExceptionState::T::None)
             {
-                // NOTE: It is UB in C++ if Op2 is not in range [0, BitLength)
-                Value = Op1 << Op2;
-            }
-            else if (Op2 > BitLength)
-            {
-                Value = 0;
-            }
-            else // Op2 < 0
-            {
-                RaiseException(Context, ExceptionState::T::InvalidInstruction);
+                RaiseException(Context, Exception);
                 return false;
             }
 
-            if (!Context.Stack.Push(Value))
+            if (!Context.Stack.Push(Value.Value()))
             {
                 RaiseException(Context, ExceptionState::T::StackOverflow);
                 return false;
@@ -1455,24 +1497,16 @@ namespace VM_NAMESPACE
             // where #INV means invalid instruction exception.
             //
 
-            T Value = 0;
-            constexpr const T BitLength = sizeof(T) * 8;
-            if (0 <= Op2 && Op2 < BitLength)
+            Integer<T> Value = Integer<T>(Op1) >> Integer<T>(Op2);
+
+            ExceptionState::T  Exception = IntegerStateToException(Value.State(), Context.FetchedPrefix);
+            if (Exception != ExceptionState::T::None)
             {
-                // NOTE: It is UB in C++ if Op2 is not in range [0, BitLength)
-                Value = Op1 >> Op2;
-            }
-            else if (Op2 > BitLength)
-            {
-                Value = 0;
-            }
-            else // Op2 < 0
-            {
-                RaiseException(Context, ExceptionState::T::InvalidInstruction);
+                RaiseException(Context, Exception);
                 return false;
             }
 
-            if (!Context.Stack.Push(Value))
+            if (!Context.Stack.Push(Value.Value()))
             {
                 RaiseException(Context, ExceptionState::T::StackOverflow);
                 return false;
@@ -1495,9 +1529,16 @@ namespace VM_NAMESPACE
                 return false;
             }
 
-            auto Value = Op1 & Op2;
+            Integer<T> Value = Integer<T>(Op1) & Integer<T>(Op2);
 
-            if (!Context.Stack.Push(Value))
+            ExceptionState::T  Exception = IntegerStateToException(Value.State(), Context.FetchedPrefix);
+            if (Exception != ExceptionState::T::None)
+            {
+                RaiseException(Context, Exception);
+                return false;
+            }
+
+            if (!Context.Stack.Push(Value.Value()))
             {
                 RaiseException(Context, ExceptionState::T::StackOverflow);
                 return false;
@@ -1520,9 +1561,16 @@ namespace VM_NAMESPACE
                 return false;
             }
 
-            auto Value = Op1 | Op2;
+            Integer<T> Value = Integer<T>(Op1) | Integer<T>(Op2);
 
-            if (!Context.Stack.Push(Value))
+            ExceptionState::T  Exception = IntegerStateToException(Value.State(), Context.FetchedPrefix);
+            if (Exception != ExceptionState::T::None)
+            {
+                RaiseException(Context, Exception);
+                return false;
+            }
+
+            if (!Context.Stack.Push(Value.Value()))
             {
                 RaiseException(Context, ExceptionState::T::StackOverflow);
                 return false;
@@ -1545,9 +1593,16 @@ namespace VM_NAMESPACE
                 return false;
             }
 
-            auto Value = Op1 ^ Op2;
+            Integer<T> Value = Integer<T>(Op1) ^ Integer<T>(Op2);
 
-            if (!Context.Stack.Push(Value))
+            ExceptionState::T  Exception = IntegerStateToException(Value.State(), Context.FetchedPrefix);
+            if (Exception != ExceptionState::T::None)
+            {
+                RaiseException(Context, Exception);
+                return false;
+            }
+
+            if (!Context.Stack.Push(Value.Value()))
             {
                 RaiseException(Context, ExceptionState::T::StackOverflow);
                 return false;
@@ -1569,9 +1624,16 @@ namespace VM_NAMESPACE
                 return false;
             }
 
-            auto Value = ~Op1;
+            Integer<T> Value = ~Integer<T>(Op1);
 
-            if (!Context.Stack.Push(Value))
+            ExceptionState::T  Exception = IntegerStateToException(Value.State(), Context.FetchedPrefix);
+            if (Exception != ExceptionState::T::None)
+            {
+                RaiseException(Context, Exception);
+                return false;
+            }
+
+            if (!Context.Stack.Push(Value.Value()))
             {
                 RaiseException(Context, ExceptionState::T::StackOverflow);
                 return false;
@@ -1582,7 +1644,7 @@ namespace VM_NAMESPACE
 
         template <
             typename T,
-            typename = std::enable_if_t<std::is_integral<T>::value || std::is_floating_point<T>::value>>
+            std::enable_if_t<std::is_integral<T>::value && std::is_signed<T>::value, bool> = true>
             inline static bool Inst_Neg(VMExecutionContext& Context)
         {
             T Op1{};
@@ -1593,9 +1655,16 @@ namespace VM_NAMESPACE
                 return false;
             }
 
-            auto Value = -Op1;
+            Integer<T> Value = -Integer<T>(Op1);
 
-            if (!Context.Stack.Push(Value))
+            ExceptionState::T  Exception = IntegerStateToException(Value.State(), Context.FetchedPrefix);
+            if (Exception != ExceptionState::T::None)
+            {
+                RaiseException(Context, Exception);
+                return false;
+            }
+
+            if (!Context.Stack.Push(Value.Value()))
             {
                 RaiseException(Context, ExceptionState::T::StackOverflow);
                 return false;
@@ -1606,7 +1675,58 @@ namespace VM_NAMESPACE
 
         template <
             typename T,
-            typename = std::enable_if_t<std::is_integral<T>::value || std::is_floating_point<T>::value>>
+            std::enable_if_t<std::is_floating_point<T>::value, bool> = true>
+            inline static bool Inst_Neg(VMExecutionContext& Context)
+        {
+            T Op1{};
+
+            if (!Context.Stack.Pop(&Op1))
+            {
+                RaiseException(Context, ExceptionState::T::StackOverflow);
+                return false;
+            }
+
+            T Value = -Op1;
+
+            if (!Context.Stack.Push(Value))
+            {
+                RaiseException(Context, ExceptionState::T::StackOverflow);
+                return false;
+            }
+
+            return true;
+        }
+
+
+        template <
+            typename T,
+            std::enable_if_t<std::is_integral<T>::value && std::is_signed<T>::value, bool> = true>
+            inline static bool Inst_Abs(VMExecutionContext& Context)
+        {
+            T Op1{};
+
+            if (!Context.Stack.Pop(&Op1))
+            {
+                RaiseException(Context, ExceptionState::T::StackOverflow);
+                return false;
+            }
+
+            Integer<T> Value = Op1;
+            if (Value.Value() < 0)
+                Value = -Value;
+
+            if (!Context.Stack.Push(Value.Value()))
+            {
+                RaiseException(Context, ExceptionState::T::StackOverflow);
+                return false;
+            }
+
+            return true;
+        }
+
+        template <
+            typename T,
+            std::enable_if_t<std::is_floating_point<T>::value, bool> = true>
             inline static bool Inst_Abs(VMExecutionContext& Context)
         {
             T Op1{};

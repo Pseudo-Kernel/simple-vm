@@ -101,7 +101,18 @@ namespace VM_NAMESPACE
             Breakpoint,
             SingleStep,
 
-            FloatingPointInvalid, // TBD
+            FloatingPointInvalid,   // TBD
+            IntegerOverflow,        // TBD
+        };
+    };
+
+    struct InstructionPrefixBits
+    {
+        enum T : uint32_t
+        {
+            None = 0,
+
+            CheckOverflow = 1 << 0,     // Raise exception if result overflows (integer)
         };
     };
     
@@ -150,6 +161,7 @@ namespace VM_NAMESPACE
         //
 
         uint32_t NextIP;						// Temporary IP
+        uint32_t FetchedPrefix;                 // Fetched Prefix Bits. see InstructionPrefixBits::T.
 
         // 
         // Virtual Machine Specific Register (VMSR).
