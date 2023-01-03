@@ -19,19 +19,19 @@ public:
         constexpr const static TIntegerState DivideByZero = 1 << 2;
     };
 
-    BaseInteger() : 
+    constexpr BaseInteger() : 
         Value_(), 
         State_(StateFlags::Invalid)
     {
     }
 
-    BaseInteger(const T& Value, TIntegerState State) :
+	constexpr BaseInteger(const T& Value, TIntegerState State) :
         Value_(Value),
         State_(State)
     {
     }
 
-    BaseInteger(const T& Value) : 
+	constexpr BaseInteger(const T& Value) :
         Value_(Value),
         State_()
     {
@@ -46,28 +46,63 @@ public:
         return true;
     }
 
-    T Value() const
+	constexpr T Value() const
     {
         return Value_;
     }
 
-    bool Invalid() const
+	constexpr bool Invalid() const
     {
         return !!(State_ & StateFlags::Invalid);
     }
 
-    auto State() const
+	constexpr bool Overflow() const
+	{
+		return !!(State_ & StateFlags::Overflow);
+	}
+
+	constexpr auto State() const
     {
         return State_;
     }
 
 protected:
+
+	bool Equal(const BaseInteger<T> rhs, bool CompareInvalidState = false)
+	{
+		if (CompareInvalidState)
+		{
+			// not equal if invalid state is not same
+			if (Invalid() && Invalid() == rhs.Invalid())
+				return true; // both invalid
+			else if (Invalid() != rhs.Invalid())
+				return false; // one of {this, rhs} is invalid
+
+			// all valid here
+		}
+		else
+		{
+			// not equal if one of {this, rhs} is in invalid state
+			if (Invalid() || rhs.Invalid())
+				return false;
+		}
+
+		// compare values if all valid
+		return (Value() == rhs.Value());
+	}
+
+	bool NotEqual(const BaseInteger<T> rhs, bool CompareInvalidState = false)
+	{
+		// FIXME: consider both this and rhs are nan (invalid state)
+		return !Equal(rhs, CompareInvalidState);
+	}
+
     T Value_;
     TIntegerState State_;
 };
 
 //
-// unsinged integer class.
+// unsigned integer class.
 //
 
 
@@ -90,17 +125,17 @@ public:
     using TUnsigned = typename std::make_unsigned_t<T>;
     using TIntegerState = typename BaseInteger<T>::TIntegerState;
 
-    Integer() :
+	constexpr Integer() :
         BaseInteger<T>()
     {
     }
 
-    Integer(const T& Value) :
+	constexpr Integer(const T& Value) :
         BaseInteger<T>(Value)
     {
     }
 
-    Integer(const BaseInteger<T>& Value) :
+	constexpr Integer(const BaseInteger<T>& Value) :
         BaseInteger<T>(Value)
     {
     }
@@ -366,28 +401,15 @@ public:
 
     bool Equal(const Integer<T> rhs, bool CompareInvalidState = false)
     {
-        if (CompareInvalidState)
-        {
-            // not equal if invalid state is not same
-            if (Invalid() && Invalid() == rhs.Invalid())
-                return true; // both invalid
-            else if (Invalid() != rhs.Invalid())
-                return false; // one of {this, rhs} is invalid
-
-            // all valid here
-        }
-        else
-        {
-            // not equal if one of {this, rhs} is in invalid state
-            if (Invalid() || rhs.Invalid())
-                return false;
-        }
-
-        // compare values if all valid
-        return (Value() == rhs.Value());
+		return BaseInteger<T>::Equal(rhs, CompareInvalidState);
     }
 
-    //
+	bool NotEqual(const BaseInteger<T> rhs, bool CompareInvalidState = false)
+	{
+		return BaseInteger<T>::NotEqual(rhs, CompareInvalidState);
+	}
+
+	//
     // Operators.
     //
 
@@ -545,7 +567,12 @@ public:
         return Equal(rhs, false);
     }
 
-    bool operator!() const = delete;
+	bool operator!=(const Integer<T> rhs)
+	{
+		return NotEqual(rhs, false);
+	}
+
+	bool operator!() const = delete;
     bool operator&&(const Integer<T> rhs) const = delete;
     bool operator||(const Integer<T> rhs) const = delete;
 };
@@ -587,17 +614,17 @@ public:
     using TUnsigned = typename std::make_unsigned_t<T>;
     using TIntegerState = typename BaseInteger<T>::TIntegerState;
 
-    Integer() :
+	constexpr Integer() :
         BaseInteger<T>()
     {
     }
 
-    Integer(const T& Value) :
+	constexpr Integer(const T& Value) :
         BaseInteger<T>(Value)
     {
     }
 
-    Integer(const BaseInteger<T>& Value) :
+	constexpr Integer(const BaseInteger<T>& Value) :
         BaseInteger<T>(Value)
     {
     }
@@ -940,26 +967,13 @@ public:
 
     bool Equal(const Integer<T> rhs, bool CompareInvalidState = false)
     {
-        if (CompareInvalidState)
-        {
-            // not equal if invalid state is not same
-            if (Invalid() && Invalid() == rhs.Invalid())
-                return true; // both invalid
-            else if (Invalid() != rhs.Invalid())
-                return false; // one of {this, rhs} is invalid
-
-            // all valid here
-        }
-        else
-        {
-            // not equal if one of {this, rhs} is in invalid state
-            if (Invalid() || rhs.Invalid())
-                return false;
-        }
-
-        // compare values if all valid
-        return (Value() == rhs.Value());
+		return BaseInteger<T>::Equal(rhs, CompareInvalidState);
     }
+
+	bool NotEqual(const BaseInteger<T> rhs, bool CompareInvalidState = false)
+	{
+		return BaseInteger<T>::NotEqual(rhs, CompareInvalidState);
+	}
 
     //
     // Operators.
@@ -1119,7 +1133,12 @@ public:
         return Equal(rhs, false);
     }
 
-    bool operator!() const = delete;
+	bool operator!=(const Integer<T> rhs)
+	{
+		return NotEqual(rhs, false);
+	}
+
+	bool operator!() const = delete;
     bool operator&&(const Integer<T> rhs) const = delete;
     bool operator||(const Integer<T> rhs) const = delete;
 };

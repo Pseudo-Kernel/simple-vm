@@ -1007,6 +1007,7 @@ namespace CoreUnitTest
 
             VMExecutionContext ExecutionContext{};
             ExecutionContext.IP = GuestCode.ResultAddress;
+			ExecutionContext.FetchedPrefix = 0;
             ExecutionContext.XTableState = 0;
             ExecutionContext.ExceptionState = ExceptionState::T::None;
 
@@ -1057,6 +1058,9 @@ namespace CoreUnitTest
             VMBytecodeInterpreter Interpreter(*Memory_.get());
             Interpreter.Execute(ExecutionContext_, 9999999);
 
+			Assert::AreEqual<size_t>(ExecutionContext_.IP, ResultSize, L"unexpected IP");
+			Assert::AreEqual<size_t>(ExecutionContext_.ExceptionState, ExceptionState::T::Breakpoint, L"bp not executed");
+
             //
             // FIXME: check the result
             //  - ExecutionContext (IP, exception state, ...)
@@ -1101,8 +1105,6 @@ namespace CoreUnitTest
     TEST_CLASS(IntegerTest)
     {
     public:
-
-        
         template <
             typename T,
             typename = std::enable_if_t<std::is_integral<T>::value>>
@@ -1116,6 +1118,12 @@ namespace CoreUnitTest
 
         enum class TestType : uint32_t
         {
+			Equ,	// a == b
+			Neq,	// a != b
+
+			Equ2,	// a == b (with state)
+			Neq2,	// a != b (with state)
+
             Add,    // a + b
             Sub,    // a - b
 
@@ -1171,7 +1179,43 @@ namespace CoreUnitTest
 
                 switch (Type)
                 {
-                case TestType::Add:    // a + b
+				case TestType::Equ:	   // a == b
+				{
+					Results = {
+						Entry.v1 == Entry.v2,
+						Entry.v2 == Entry.v1,
+					};
+					break;
+				}
+
+				case TestType::Neq:	   // a != b
+				{
+					Results = {
+						Entry.v1 != Entry.v2,
+						Entry.v2 != Entry.v1,
+					};
+					break;
+				}
+
+				case TestType::Equ2:	  // a == b (with state)
+				{
+					Results = {
+						Entry.v1.Equal(Entry.v2, true),
+						Entry.v2.Equal(Entry.v1, true),
+					};
+					break;
+				}
+
+				case TestType::Neq2:	  // a != b (with state)
+				{
+					Results = {
+						Entry.v1.NotEqual(Entry.v2, true),
+						Entry.v2.NotEqual(Entry.v1, true),
+					};
+					break;
+				}
+
+				case TestType::Add:    // a + b
                 {
                     Results = {
                         Entry.v1 + Entry.v2,
@@ -1346,6 +1390,58 @@ namespace CoreUnitTest
             constexpr const uint8_t s_div = Integer<TInt>::StateFlags::DivideByZero;
 
             Integer<TInt> nan;
+
+			DoTest(TestType::Equ, std::vector<Testcase<TInt>>
+			{
+				// v1, v2, result_expected, state_expected
+
+				{ TInt(1), TInt(1), true, 0, },
+				{ TInt(1), TInt(2), false, 0, },
+				{ nan, TInt(1), false, 0, },
+
+				{ BaseInteger<TInt>(1, s_inv), BaseInteger<TInt>(1, s_inv), false, 0, },
+				{ BaseInteger<TInt>(1, s_inv), BaseInteger<TInt>(2, s_inv), false, 0, },
+				{ nan, nan, false, 0, },
+			});
+
+			DoTest(TestType::Neq, std::vector<Testcase<TInt>>
+			{
+				// v1, v2, result_expected, state_expected
+
+				{ TInt(1), TInt(1), false, 0, },
+				{ TInt(1), TInt(2), true, 0, },
+				{ nan, TInt(1), true, 0, },
+
+				{ BaseInteger<TInt>(1, s_inv), BaseInteger<TInt>(1, s_inv), true, 0, },
+				{ BaseInteger<TInt>(1, s_inv), BaseInteger<TInt>(2, s_inv), true, 0, },
+				{ nan, nan, true, 0, },
+			});
+
+			DoTest(TestType::Equ2, std::vector<Testcase<TInt>>
+			{
+				// v1, v2, result_expected, state_expected
+
+				{ TInt(1), TInt(1), true, 0, },
+				{ TInt(1), TInt(2), false, 0, },
+				{ nan, TInt(1), false, 0, },
+
+				{ BaseInteger<TInt>(1, s_inv), BaseInteger<TInt>(1, s_inv), true, 0, },
+				{ BaseInteger<TInt>(1, s_inv), BaseInteger<TInt>(2, s_inv), true, 0, },
+				{ nan, nan, true, 0, },
+			});
+
+			DoTest(TestType::Neq2, std::vector<Testcase<TInt>>
+			{
+				// v1, v2, result_expected, state_expected
+
+				{ TInt(1), TInt(1), false, 0, },
+				{ TInt(1), TInt(2), true, 0, },
+				{ nan, TInt(1), true, 0, },
+
+				{ BaseInteger<TInt>(1, s_inv), BaseInteger<TInt>(1, s_inv), false, 0, },
+				{ BaseInteger<TInt>(1, s_inv), BaseInteger<TInt>(2, s_inv), false, 0, },
+				{ nan, nan, false, 0, },
+			});
 
             DoTest(TestType::Add, std::vector<Testcase<TInt>>
             {
@@ -1896,6 +1992,58 @@ namespace CoreUnitTest
             constexpr const uint8_t s_div = Integer<TInt>::StateFlags::DivideByZero;
 
             Integer<TInt> nan;
+
+			DoTest(TestType::Equ, std::vector<Testcase<TInt>>
+			{
+				// v1, v2, result_expected, state_expected
+
+				{ TInt(1), TInt(1), true, 0, },
+				{ TInt(1), TInt(2), false, 0, },
+				{ nan, TInt(1), false, 0, },
+
+				{ BaseInteger<TInt>(1, s_inv), BaseInteger<TInt>(1, s_inv), false, 0, },
+				{ BaseInteger<TInt>(1, s_inv), BaseInteger<TInt>(2, s_inv), false, 0, },
+				{ nan, nan, false, 0, },
+			});
+
+			DoTest(TestType::Neq, std::vector<Testcase<TInt>>
+			{
+				// v1, v2, result_expected, state_expected
+
+				{ TInt(1), TInt(1), false, 0, },
+				{ TInt(1), TInt(2), true, 0, },
+				{ nan, TInt(1), true, 0, },
+
+				{ BaseInteger<TInt>(1, s_inv), BaseInteger<TInt>(1, s_inv), true, 0, },
+				{ BaseInteger<TInt>(1, s_inv), BaseInteger<TInt>(2, s_inv), true, 0, },
+				{ nan, nan, true, 0, },
+			});
+
+			DoTest(TestType::Equ2, std::vector<Testcase<TInt>>
+			{
+				// v1, v2, result_expected, state_expected
+
+				{ TInt(1), TInt(1), true, 0, },
+				{ TInt(1), TInt(2), false, 0, },
+				{ nan, TInt(1), false, 0, },
+
+				{ BaseInteger<TInt>(1, s_inv), BaseInteger<TInt>(1, s_inv), true, 0, },
+				{ BaseInteger<TInt>(1, s_inv), BaseInteger<TInt>(2, s_inv), true, 0, },
+				{ nan, nan, true, 0, },
+			});
+
+			DoTest(TestType::Neq2, std::vector<Testcase<TInt>>
+			{
+				// v1, v2, result_expected, state_expected
+
+				{ TInt(1), TInt(1), false, 0, },
+				{ TInt(1), TInt(2), true, 0, },
+				{ nan, TInt(1), true, 0, },
+
+				{ BaseInteger<TInt>(1, s_inv), BaseInteger<TInt>(1, s_inv), false, 0, },
+				{ BaseInteger<TInt>(1, s_inv), BaseInteger<TInt>(2, s_inv), false, 0, },
+				{ nan, nan, false, 0, },
+			});
 
             DoTest(TestType::Add, std::vector<Testcase<TInt>>
             {
