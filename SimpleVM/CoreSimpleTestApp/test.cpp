@@ -247,7 +247,7 @@ void test_vm_bytecode_emitter()
     const int DefaultAlignment = sizeof(intptr_t);
 
     VMExecutionContext ExecutionContext{};
-    ExecutionContext.IP = GuestCode.ResultAddress;
+    ExecutionContext.IP = static_cast<uint32_t>(GuestCode.ResultAddress);
     ExecutionContext.XTableState = 0;
     ExecutionContext.ExceptionState = ExceptionState::T::None;
     ExecutionContext.Stack = VMStack(

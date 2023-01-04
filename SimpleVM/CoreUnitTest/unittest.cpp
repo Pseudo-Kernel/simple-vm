@@ -907,6 +907,17 @@ namespace CoreUnitTest
             uint64_t Size;
         };
 
+        struct EmitInfo
+        {
+            EmitInfo(Opcode::T Code) :
+                Code(Code), Op() {}
+            EmitInfo(Opcode::T Code, Operand Op) :
+                Code(Code), Op(Op) {}
+
+            Opcode::T Code;
+            Operand Op;
+        };
+
         static void OpenConsole()
         {
             for (int i = 0; i < 5; i++)
@@ -1006,10 +1017,11 @@ namespace CoreUnitTest
             const int DefaultAlignment = sizeof(intptr_t); // Stack alignment
 
             VMExecutionContext ExecutionContext{};
-            ExecutionContext.IP = GuestCode.ResultAddress;
-			ExecutionContext.FetchedPrefix = 0;
+            ExecutionContext.IP = static_cast<uint32_t>(GuestCode.ResultAddress);
+            ExecutionContext.FetchedPrefix = 0;
             ExecutionContext.XTableState = 0;
             ExecutionContext.ExceptionState = ExceptionState::T::None;
+            ExecutionContext.Mode = 0;
 
             ExecutionContext.Stack = VMStack(
                 Memory.HostAddress(GuestStack.ResultAddress), GuestStack.Size, DefaultAlignment);
@@ -1020,6 +1032,10 @@ namespace CoreUnitTest
             ExecutionContext.ArgumentStack = VMStack(
                 Memory.HostAddress(GuestArgumentStack.ResultAddress), GuestArgumentStack.Size, DefaultAlignment);
 
+            if (DefaultAlignment == sizeof(int64_t))
+            {
+                ExecutionContext.Mode |= ModeBits::T::VMStackOper64Bit; // 64-bit stack oper
+            }
 
             GuestCode_ = GuestMemory(GuestCode.ResultAddress, GuestCode.Size);
             GuestStack_ = GuestMemory(GuestStack.ResultAddress, GuestStack.Size);
@@ -1037,59 +1053,206 @@ namespace CoreUnitTest
             ExecutionContext_ = {};
         }
 
-        TEST_METHOD(Instruction_Add)
+        static_assert(Opcode::T::Bp == 1, "unexpected opcode value");
+
+        template <
+            typename T,
+            std::enable_if_t<std::is_integral<T>::value && sizeof(T) == 1, bool> = true>
+            Operand OperandHelper(T Value)
         {
-            VMBytecodeEmitter Emitter;
-            unsigned char *HostAddress = reinterpret_cast<unsigned char *>
-                (Memory_->HostAddress(ExecutionContext_.IP, 0x1000));
-            size_t ResultSize = 0;
-
-            bool Result = Emitter
-                .BeginEmit()
-                .Emit(Opcode::T::Ldimm_I4, Operand(OperandType::Imm32, 0x44332211))
-                .Emit(Opcode::T::Ldimm_I4, Operand(OperandType::Imm32, 0x11223344))
-                .Emit(Opcode::T::Add_I4)
-                .Emit(Opcode::T::Bp)
-                .EndEmit(HostAddress, GuestCode_.Size, &ResultSize);
-
-            Logger::WriteMessage(Format(
-                "EmitResult %d, size %zd\n", Result, ResultSize).c_str());
-
-            VMBytecodeInterpreter Interpreter(*Memory_.get());
-            Interpreter.Execute(ExecutionContext_, 9999999);
-
-			Assert::AreEqual<size_t>(ExecutionContext_.IP, ResultSize, L"unexpected IP");
-			Assert::AreEqual<size_t>(ExecutionContext_.ExceptionState, ExceptionState::T::Breakpoint, L"bp not executed");
-
-            //
-            // FIXME: check the result
-            //  - ExecutionContext (IP, exception state, ...)
-            //  - calculation result (read from stack)
-            //
+            return Operand(OperandType::Imm8, Value);
         }
 
-        //TEST_METHOD(Instruction_Sub)
-        //{
-        //    VMBytecodeEmitter Emitter;
-        //    unsigned char* HostAddress = reinterpret_cast<unsigned char*>
-        //        (Memory_->HostAddress(ExecutionContext_.IP, 0x1000));
-        //    size_t ResultSize = 0;
-        //
-        //    bool Result = Emitter
-        //        .BeginEmit()
-        //        .Emit(Opcode::T::Ldimm_I4, Operand(OperandType::Imm32, 0x44332211))
-        //        .Emit(Opcode::T::Ldimm_I4, Operand(OperandType::Imm32, 0x11223344))
-        //        .Emit(Opcode::T::Sub_I4)
-        //        .Emit(Opcode::T::Bp)
-        //        .EndEmit(HostAddress, GuestCode_.Size, &ResultSize);
-        //
-        //    Logger::WriteMessage(Format(
-        //        "EmitResult %d, size %zd\n", Result, ResultSize).c_str());
-        //
-        //    VMBytecodeInterpreter Interpreter(*Memory_.get());
-        //    Interpreter.Execute(ExecutionContext_, 9999999);
-        //
-        //}
+        template <
+            typename T,
+            std::enable_if_t<std::is_integral<T>::value && sizeof(T) == 2, bool> = true>
+            Operand OperandHelper(T Value)
+        {
+            return Operand(OperandType::Imm16, Value);
+        }
+
+        template <
+            typename T,
+            std::enable_if_t<std::is_integral<T>::value && sizeof(T) == 4, bool> = true>
+            Operand OperandHelper(T Value)
+        {
+            return Operand(OperandType::Imm32, Value);
+        }
+
+        template <
+            typename T,
+            std::enable_if_t<std::is_integral<T>::value && sizeof(T) == 8, bool> = true>
+            Operand OperandHelper(T Value)
+        {
+            return Operand(OperandType::Imm64, Value);
+        }
+
+        uint32_t Fp32ToU32(float Value)
+        {
+            return Base::BitCast<uint32_t>(Value);
+        }
+
+        uint64_t Fp64ToU64(double Value)
+        {
+            return Base::BitCast<uint64_t>(Value);
+        }
+
+        template <typename T>
+        void VerifyStack(VMStack& Stack, T Expected)
+        {
+            static_assert(std::is_integral<T>::value || std::is_floating_point<T>::value, 
+                "T is neither integral nor floating point");
+            T Result = 0;
+            Assert::IsTrue(Stack.Pop(&Result));
+            Assert::AreEqual(Result, Expected, L"result mismatch");
+        }
+
+        template <typename T>
+        void VerifyStackHelper(VMStack& Stack, T Expected)
+        {
+            VerifyStack(Stack, Expected);
+        }
+
+        template <
+            typename T,
+            typename... TRest, 
+            typename = std::enable_if_t<std::is_integral<T>::value || std::is_floating_point<T>::value>,
+            typename = std::enable_if_t<std::is_integral<TRest...>::value || std::is_floating_point<TRest...>::value>>
+            void VerifyStackHelper(VMStack& Stack, T Expected, TRest... Rest)
+        {
+            VerifyStackHelper(Stack, Expected);
+
+            return VerifyStackHelper(Stack, Rest...);
+        }
+
+        void DoSingleTest(std::vector<EmitInfo> EmitOp, ExceptionState::T ExpectedExceptionState, int32_t ExpectedStackConsumed)
+        {
+            VMBytecodeEmitter Emitter;
+            auto PrevIP = ExecutionContext_.IP;
+            uint32_t PrevStackTop = ExecutionContext_.Stack.TopOffset();
+            unsigned char* HostAddress = reinterpret_cast<unsigned char*>
+                (Memory_->HostAddress(ExecutionContext_.IP, 0x1000));
+
+            Emitter.BeginEmit();
+            for (auto& it : EmitOp)
+            {
+                if (it.Op.Type == OperandType::T::None)
+                    Emitter.Emit(it.Code);
+                else
+                    Emitter.Emit(it.Code, it.Op);
+            }
+
+            int EmitCount = static_cast<int>(EmitOp.size());
+            size_t ResultSize = 0;
+            bool EmitResult = Emitter.EndEmit(HostAddress, GuestCode_.Size, &ResultSize);
+
+            Logger::WriteMessage(Format(
+                "EmitResult %d, size %zd\n", EmitResult, ResultSize).c_str());
+
+            VMBytecodeInterpreter Interpreter(*Memory_.get());
+            int ExecStepCount = Interpreter.Execute(ExecutionContext_, EmitCount);
+
+            Assert::AreEqual(ExecStepCount, EmitCount, L"instruction end unreachable");
+            Assert::AreEqual<size_t>(ExecutionContext_.IP, PrevIP + ResultSize, L"IP mismatch");
+            Assert::AreEqual<uint32_t>(ExecutionContext_.ExceptionState, ExpectedExceptionState, L"exception state mismatch");
+
+            uint32_t CurrentStackTop = ExecutionContext_.Stack.TopOffset();
+
+            bool IsStackOper64 = VMBytecodeInterpreter::IsStackOper64Bit(ExecutionContext_);
+            int32_t ExpectedStackTopDelta = std::abs(ExpectedStackConsumed);
+            int32_t ExpectedStackConsumedAligned = IsStackOper64 ?
+                (ExpectedStackTopDelta + 7) & ~7 :
+                (ExpectedStackTopDelta + 3) & ~3;
+            if (ExpectedStackTopDelta < 0)
+                ExpectedStackConsumedAligned = -ExpectedStackConsumedAligned;
+
+            uint32_t ExpectedStackTop = PrevStackTop - static_cast<uint32_t>(ExpectedStackConsumedAligned);
+            Assert::AreEqual(CurrentStackTop, ExpectedStackTop, L"stack top mismatch");
+        }
+
+        template <typename... TArgs>
+        void DoSingleTest(std::vector<EmitInfo> EmitOp, ExceptionState::T ExpectedExceptionState, int32_t ExpectedStackConsumed, TArgs... ExpectedStackValues)
+        {
+            DoSingleTest(EmitOp, ExpectedExceptionState, ExpectedStackConsumed);
+
+            VerifyStackHelper(ExecutionContext_.Stack, ExpectedStackValues...);
+        }
+
+        TEST_METHOD(Inst_Add)
+        {
+            if (1)
+            {
+                using TImm = uint32_t;
+                DoSingleTest(std::vector<EmitInfo>
+                {
+                    EmitInfo(Opcode::T::Ldimm_I4, OperandHelper(TImm(0x11223344))),
+                    EmitInfo(Opcode::T::Ldimm_I4, OperandHelper(TImm(0x44332211))),
+                    EmitInfo(Opcode::T::Add_I4),
+                }, ExceptionState::T::None, sizeof(TImm), 0x55555555);
+            }
+
+            if (1)
+            {
+                using TImm = uint32_t;
+                DoSingleTest(std::vector<EmitInfo>
+                {
+                    EmitInfo(Opcode::T::Ldimm_I4, OperandHelper(TImm(0x11223344))),
+                    EmitInfo(Opcode::T::Ldimm_I4, OperandHelper(TImm(0x44332211))),
+                    EmitInfo(Opcode::T::Add_U4),
+                }, ExceptionState::T::None, sizeof(TImm), 0x55555555);
+            }
+
+            if (1)
+            {
+                using TImm = uint64_t;
+                DoSingleTest(std::vector<EmitInfo>
+                {
+                    EmitInfo(Opcode::T::Ldimm_I8, OperandHelper(TImm(0x11223344'55443322))),
+                    EmitInfo(Opcode::T::Ldimm_I8, OperandHelper(TImm(0x44332211'22334455))),
+                    EmitInfo(Opcode::T::Add_I8),
+                }, ExceptionState::T::None, sizeof(TImm), 0x55555555'77777777);
+            }
+
+            if (1)
+            {
+                using TImm = uint64_t;
+                DoSingleTest(std::vector<EmitInfo>
+                {
+                    EmitInfo(Opcode::T::Ldimm_I8, OperandHelper(TImm(0x11223344'55443322))),
+                    EmitInfo(Opcode::T::Ldimm_I8, OperandHelper(TImm(0x44332211'22334455))),
+                    EmitInfo(Opcode::T::Add_U8),
+                }, ExceptionState::T::None, sizeof(TImm), 0x55555555'77777777);
+            }
+
+
+            if (1)
+            {
+                using TImm = uint32_t;
+                float v1 = 123.456f;
+                float v2 = 654.321f;
+                float vr = v1 + v2;
+                DoSingleTest(std::vector<EmitInfo>
+                {
+                    EmitInfo(Opcode::T::Ldimm_I4, OperandHelper(TImm(Fp32ToU32(v1)))),
+                    EmitInfo(Opcode::T::Ldimm_I4, OperandHelper(TImm(Fp32ToU32(v2)))),
+                    EmitInfo(Opcode::T::Add_F4),
+                }, ExceptionState::T::None, sizeof(TImm), vr);
+            }
+
+            if (1)
+            {
+                using TImm = uint64_t;
+                double v1 = 123.456;
+                double v2 = 654.321;
+                double vr = v1 + v2;
+                DoSingleTest(std::vector<EmitInfo>
+                {
+                    EmitInfo(Opcode::T::Ldimm_I8, OperandHelper(TImm(Fp64ToU64(v1)))),
+                    EmitInfo(Opcode::T::Ldimm_I8, OperandHelper(TImm(Fp64ToU64(v2)))),
+                    EmitInfo(Opcode::T::Add_F8),
+                }, ExceptionState::T::None, sizeof(TImm), vr);
+            }
+        }
 
     private:
         std::unique_ptr<VMMemoryManager> Memory_;
@@ -1100,6 +1263,8 @@ namespace CoreUnitTest
         GuestMemory GuestShadowStack_;
         GuestMemory GuestLocalVarStack_;
         GuestMemory GuestArgumentStack_;
+
+        const uint32_t SizeOfBpInst = 1;
     };
 
     TEST_CLASS(IntegerTest)
@@ -1118,11 +1283,11 @@ namespace CoreUnitTest
 
         enum class TestType : uint32_t
         {
-			Equ,	// a == b
-			Neq,	// a != b
+            Equ,	// a == b
+            Neq,	// a != b
 
-			Equ2,	// a == b (with state)
-			Neq2,	// a != b (with state)
+            Equ2,	// a == b (with state)
+            Neq2,	// a != b (with state)
 
             Add,    // a + b
             Sub,    // a - b
@@ -1179,43 +1344,43 @@ namespace CoreUnitTest
 
                 switch (Type)
                 {
-				case TestType::Equ:	   // a == b
-				{
-					Results = {
-						Entry.v1 == Entry.v2,
-						Entry.v2 == Entry.v1,
-					};
-					break;
-				}
+                case TestType::Equ:	   // a == b
+                {
+                    Results = {
+                        Entry.v1 == Entry.v2,
+                        Entry.v2 == Entry.v1,
+                    };
+                    break;
+                }
 
-				case TestType::Neq:	   // a != b
-				{
-					Results = {
-						Entry.v1 != Entry.v2,
-						Entry.v2 != Entry.v1,
-					};
-					break;
-				}
+                case TestType::Neq:	   // a != b
+                {
+                    Results = {
+                        Entry.v1 != Entry.v2,
+                        Entry.v2 != Entry.v1,
+                    };
+                    break;
+                }
 
-				case TestType::Equ2:	  // a == b (with state)
-				{
-					Results = {
-						Entry.v1.Equal(Entry.v2, true),
-						Entry.v2.Equal(Entry.v1, true),
-					};
-					break;
-				}
+                case TestType::Equ2:	  // a == b (with state)
+                {
+                    Results = {
+                        Entry.v1.Equal(Entry.v2, true),
+                        Entry.v2.Equal(Entry.v1, true),
+                    };
+                    break;
+                }
 
-				case TestType::Neq2:	  // a != b (with state)
-				{
-					Results = {
-						Entry.v1.NotEqual(Entry.v2, true),
-						Entry.v2.NotEqual(Entry.v1, true),
-					};
-					break;
-				}
+                case TestType::Neq2:	  // a != b (with state)
+                {
+                    Results = {
+                        Entry.v1.NotEqual(Entry.v2, true),
+                        Entry.v2.NotEqual(Entry.v1, true),
+                    };
+                    break;
+                }
 
-				case TestType::Add:    // a + b
+                case TestType::Add:    // a + b
                 {
                     Results = {
                         Entry.v1 + Entry.v2,
@@ -1391,57 +1556,57 @@ namespace CoreUnitTest
 
             Integer<TInt> nan;
 
-			DoTest(TestType::Equ, std::vector<Testcase<TInt>>
-			{
-				// v1, v2, result_expected, state_expected
+            DoTest(TestType::Equ, std::vector<Testcase<TInt>>
+            {
+                // v1, v2, result_expected, state_expected
 
-				{ TInt(1), TInt(1), true, 0, },
-				{ TInt(1), TInt(2), false, 0, },
-				{ nan, TInt(1), false, 0, },
+                { TInt(1), TInt(1), true, 0, },
+                { TInt(1), TInt(2), false, 0, },
+                { nan, TInt(1), false, 0, },
 
-				{ BaseInteger<TInt>(1, s_inv), BaseInteger<TInt>(1, s_inv), false, 0, },
-				{ BaseInteger<TInt>(1, s_inv), BaseInteger<TInt>(2, s_inv), false, 0, },
-				{ nan, nan, false, 0, },
-			});
+                { BaseInteger<TInt>(1, s_inv), BaseInteger<TInt>(1, s_inv), false, 0, },
+                { BaseInteger<TInt>(1, s_inv), BaseInteger<TInt>(2, s_inv), false, 0, },
+                { nan, nan, false, 0, },
+            });
 
-			DoTest(TestType::Neq, std::vector<Testcase<TInt>>
-			{
-				// v1, v2, result_expected, state_expected
+            DoTest(TestType::Neq, std::vector<Testcase<TInt>>
+            {
+                // v1, v2, result_expected, state_expected
 
-				{ TInt(1), TInt(1), false, 0, },
-				{ TInt(1), TInt(2), true, 0, },
-				{ nan, TInt(1), true, 0, },
+                { TInt(1), TInt(1), false, 0, },
+                { TInt(1), TInt(2), true, 0, },
+                { nan, TInt(1), true, 0, },
 
-				{ BaseInteger<TInt>(1, s_inv), BaseInteger<TInt>(1, s_inv), true, 0, },
-				{ BaseInteger<TInt>(1, s_inv), BaseInteger<TInt>(2, s_inv), true, 0, },
-				{ nan, nan, true, 0, },
-			});
+                { BaseInteger<TInt>(1, s_inv), BaseInteger<TInt>(1, s_inv), true, 0, },
+                { BaseInteger<TInt>(1, s_inv), BaseInteger<TInt>(2, s_inv), true, 0, },
+                { nan, nan, true, 0, },
+            });
 
-			DoTest(TestType::Equ2, std::vector<Testcase<TInt>>
-			{
-				// v1, v2, result_expected, state_expected
+            DoTest(TestType::Equ2, std::vector<Testcase<TInt>>
+            {
+                // v1, v2, result_expected, state_expected
 
-				{ TInt(1), TInt(1), true, 0, },
-				{ TInt(1), TInt(2), false, 0, },
-				{ nan, TInt(1), false, 0, },
+                { TInt(1), TInt(1), true, 0, },
+                { TInt(1), TInt(2), false, 0, },
+                { nan, TInt(1), false, 0, },
 
-				{ BaseInteger<TInt>(1, s_inv), BaseInteger<TInt>(1, s_inv), true, 0, },
-				{ BaseInteger<TInt>(1, s_inv), BaseInteger<TInt>(2, s_inv), true, 0, },
-				{ nan, nan, true, 0, },
-			});
+                { BaseInteger<TInt>(1, s_inv), BaseInteger<TInt>(1, s_inv), true, 0, },
+                { BaseInteger<TInt>(1, s_inv), BaseInteger<TInt>(2, s_inv), true, 0, },
+                { nan, nan, true, 0, },
+            });
 
-			DoTest(TestType::Neq2, std::vector<Testcase<TInt>>
-			{
-				// v1, v2, result_expected, state_expected
+            DoTest(TestType::Neq2, std::vector<Testcase<TInt>>
+            {
+                // v1, v2, result_expected, state_expected
 
-				{ TInt(1), TInt(1), false, 0, },
-				{ TInt(1), TInt(2), true, 0, },
-				{ nan, TInt(1), true, 0, },
+                { TInt(1), TInt(1), false, 0, },
+                { TInt(1), TInt(2), true, 0, },
+                { nan, TInt(1), true, 0, },
 
-				{ BaseInteger<TInt>(1, s_inv), BaseInteger<TInt>(1, s_inv), false, 0, },
-				{ BaseInteger<TInt>(1, s_inv), BaseInteger<TInt>(2, s_inv), false, 0, },
-				{ nan, nan, false, 0, },
-			});
+                { BaseInteger<TInt>(1, s_inv), BaseInteger<TInt>(1, s_inv), false, 0, },
+                { BaseInteger<TInt>(1, s_inv), BaseInteger<TInt>(2, s_inv), false, 0, },
+                { nan, nan, false, 0, },
+            });
 
             DoTest(TestType::Add, std::vector<Testcase<TInt>>
             {
@@ -1993,57 +2158,57 @@ namespace CoreUnitTest
 
             Integer<TInt> nan;
 
-			DoTest(TestType::Equ, std::vector<Testcase<TInt>>
-			{
-				// v1, v2, result_expected, state_expected
+            DoTest(TestType::Equ, std::vector<Testcase<TInt>>
+            {
+                // v1, v2, result_expected, state_expected
 
-				{ TInt(1), TInt(1), true, 0, },
-				{ TInt(1), TInt(2), false, 0, },
-				{ nan, TInt(1), false, 0, },
+                { TInt(1), TInt(1), true, 0, },
+                { TInt(1), TInt(2), false, 0, },
+                { nan, TInt(1), false, 0, },
 
-				{ BaseInteger<TInt>(1, s_inv), BaseInteger<TInt>(1, s_inv), false, 0, },
-				{ BaseInteger<TInt>(1, s_inv), BaseInteger<TInt>(2, s_inv), false, 0, },
-				{ nan, nan, false, 0, },
-			});
+                { BaseInteger<TInt>(1, s_inv), BaseInteger<TInt>(1, s_inv), false, 0, },
+                { BaseInteger<TInt>(1, s_inv), BaseInteger<TInt>(2, s_inv), false, 0, },
+                { nan, nan, false, 0, },
+            });
 
-			DoTest(TestType::Neq, std::vector<Testcase<TInt>>
-			{
-				// v1, v2, result_expected, state_expected
+            DoTest(TestType::Neq, std::vector<Testcase<TInt>>
+            {
+                // v1, v2, result_expected, state_expected
 
-				{ TInt(1), TInt(1), false, 0, },
-				{ TInt(1), TInt(2), true, 0, },
-				{ nan, TInt(1), true, 0, },
+                { TInt(1), TInt(1), false, 0, },
+                { TInt(1), TInt(2), true, 0, },
+                { nan, TInt(1), true, 0, },
 
-				{ BaseInteger<TInt>(1, s_inv), BaseInteger<TInt>(1, s_inv), true, 0, },
-				{ BaseInteger<TInt>(1, s_inv), BaseInteger<TInt>(2, s_inv), true, 0, },
-				{ nan, nan, true, 0, },
-			});
+                { BaseInteger<TInt>(1, s_inv), BaseInteger<TInt>(1, s_inv), true, 0, },
+                { BaseInteger<TInt>(1, s_inv), BaseInteger<TInt>(2, s_inv), true, 0, },
+                { nan, nan, true, 0, },
+            });
 
-			DoTest(TestType::Equ2, std::vector<Testcase<TInt>>
-			{
-				// v1, v2, result_expected, state_expected
+            DoTest(TestType::Equ2, std::vector<Testcase<TInt>>
+            {
+                // v1, v2, result_expected, state_expected
 
-				{ TInt(1), TInt(1), true, 0, },
-				{ TInt(1), TInt(2), false, 0, },
-				{ nan, TInt(1), false, 0, },
+                { TInt(1), TInt(1), true, 0, },
+                { TInt(1), TInt(2), false, 0, },
+                { nan, TInt(1), false, 0, },
 
-				{ BaseInteger<TInt>(1, s_inv), BaseInteger<TInt>(1, s_inv), true, 0, },
-				{ BaseInteger<TInt>(1, s_inv), BaseInteger<TInt>(2, s_inv), true, 0, },
-				{ nan, nan, true, 0, },
-			});
+                { BaseInteger<TInt>(1, s_inv), BaseInteger<TInt>(1, s_inv), true, 0, },
+                { BaseInteger<TInt>(1, s_inv), BaseInteger<TInt>(2, s_inv), true, 0, },
+                { nan, nan, true, 0, },
+            });
 
-			DoTest(TestType::Neq2, std::vector<Testcase<TInt>>
-			{
-				// v1, v2, result_expected, state_expected
+            DoTest(TestType::Neq2, std::vector<Testcase<TInt>>
+            {
+                // v1, v2, result_expected, state_expected
 
-				{ TInt(1), TInt(1), false, 0, },
-				{ TInt(1), TInt(2), true, 0, },
-				{ nan, TInt(1), true, 0, },
+                { TInt(1), TInt(1), false, 0, },
+                { TInt(1), TInt(2), true, 0, },
+                { nan, TInt(1), true, 0, },
 
-				{ BaseInteger<TInt>(1, s_inv), BaseInteger<TInt>(1, s_inv), false, 0, },
-				{ BaseInteger<TInt>(1, s_inv), BaseInteger<TInt>(2, s_inv), false, 0, },
-				{ nan, nan, false, 0, },
-			});
+                { BaseInteger<TInt>(1, s_inv), BaseInteger<TInt>(1, s_inv), false, 0, },
+                { BaseInteger<TInt>(1, s_inv), BaseInteger<TInt>(2, s_inv), false, 0, },
+                { nan, nan, false, 0, },
+            });
 
             DoTest(TestType::Add, std::vector<Testcase<TInt>>
             {
