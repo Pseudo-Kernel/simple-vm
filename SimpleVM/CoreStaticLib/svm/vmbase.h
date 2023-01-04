@@ -103,6 +103,8 @@ namespace VM_NAMESPACE
 
             FloatingPointInvalid,   // TBD
             IntegerOverflow,        // TBD
+
+            FatalError,
         };
     };
 

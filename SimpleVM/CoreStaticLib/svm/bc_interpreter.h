@@ -21,6 +21,31 @@ namespace VM_NAMESPACE
         {
         }
 
+        static bool IsAddress64Bit(const VMExecutionContext& Context) noexcept
+        {
+            return !!(Context.Mode & ModeBits::T::VMPointer64Bit);
+        }
+
+        static bool IsStackOper64Bit(const VMExecutionContext& Context) noexcept
+        {
+            return !!(Context.Mode & ModeBits::T::VMStackOper64Bit);
+        }
+
+        static int VMPointerSize(const VMExecutionContext& Context) noexcept
+        {
+            if (Context.Mode & ModeBits::T::VMPointer64Bit)
+                return sizeof(int64_t);
+
+            return sizeof(int32_t);
+        }
+
+        static int VMStackOperSize(const VMExecutionContext& Context) noexcept
+        {
+            if (Context.Mode & ModeBits::T::VMStackOper64Bit)
+                return sizeof(int64_t);
+
+            return sizeof(int32_t);
+        }
 
         static bool RaiseException(VMExecutionContext& Context, ExceptionState::T State)
         {
@@ -57,6 +82,26 @@ namespace VM_NAMESPACE
             int StepCount = 0;
 
             printf(" =========== VM Execute (Step %10d) =========== \n", Count);
+
+            //
+            // Check stack alignment and operating mode.
+            //
+
+            auto Alignment = Context.Stack.Alignment();
+            if (Alignment != Context.ShadowStack.Alignment() ||
+                Alignment != Context.ArgumentStack.Alignment())
+            {
+                RaiseException(Context, ExceptionState::T::FatalError);
+                return 0;
+            }
+
+            bool StackOper64 = IsStackOper64Bit(Context);
+            if (!(Alignment == sizeof(int32_t) && !StackOper64) &&
+                !(Alignment == sizeof(int64_t) && StackOper64))
+            {
+                RaiseException(Context, ExceptionState::T::FatalError);
+                return 0;
+            }
 
             do
             {
@@ -3209,33 +3254,7 @@ namespace VM_NAMESPACE
             //return true;
         }
 
-        static bool IsAddress64Bit(const VMExecutionContext& Context) noexcept
-        {
-            return !!(Context.Mode & ModeBits::T::VMPointer64Bit);
-        }
-
-        static bool IsStackOper64Bit(const VMExecutionContext& Context) noexcept
-        {
-            return !!(Context.Mode & ModeBits::T::VMStackOper64Bit);
-        }
-
-        static int VMPointerSize(const VMExecutionContext& Context) noexcept
-        {
-            if (Context.Mode & ModeBits::T::VMPointer64Bit)
-                return sizeof(int64_t);
-
-            return sizeof(int32_t);
-        }
-
-        static int VMStackOperSize(const VMExecutionContext& Context) noexcept
-        {
-            if (Context.Mode & ModeBits::T::VMStackOper64Bit)
-                return sizeof(int64_t);
-
-            return sizeof(int32_t);
-        }
-
-
+private:
         VMMemoryManager& MemoryManager_;
     };
 
