@@ -9,6 +9,8 @@ namespace VM_NAMESPACE
 	{
 		enum T : uint32_t
 		{
+			None,   // None
+
 			Imm8,   // 8-bit Immediate
 			Imm16,  // 16-bit Immediate
 			Imm32,  // 32-bit Immediate
@@ -19,7 +21,9 @@ namespace VM_NAMESPACE
 	class Operand
 	{
 	public:
-		constexpr Operand(OperandType::T Type, uint64_t Value) : 
+		constexpr Operand() :
+			Type(OperandType::T::None), Value() {}
+		constexpr Operand(OperandType::T Type, uint64_t Value) :
 			Type(Type), Value(Value) {}
 
 		OperandType::T Type;
@@ -49,6 +53,9 @@ namespace VM_NAMESPACE
 	{
 		enum T : uint32_t
 		{
+			Nop,
+			Bp,
+
 			Add_I4,
 			Add_I8,
 			Add_U4,
@@ -225,8 +232,7 @@ namespace VM_NAMESPACE
 			Call_I2,
 			Call_I4,
 			Ret,
-			Nop,
-			Bp,
+
 			Ldvmsr,
 			Stvmsr,
 			Vmcall,

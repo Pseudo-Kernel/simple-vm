@@ -116,6 +116,35 @@
  */
 
 
+
+/*
+ * nop - no operation
+ *
+ * expression:
+ *     nop
+ * operation:
+ *     do nothing
+ * stack changes:
+ *     none
+ * exceptions:
+ *     none
+ */
+DEFINE_INST		(Nop,			nop					)
+
+/*
+ * bp - breakpoint
+ *
+ * expression:
+ *     nop
+ * operation:
+ *     RaiseException(#BP)
+ * stack changes:
+ *     none
+ * exceptions:
+ *     #BP (breakpoint detected)
+ */
+DEFINE_INST		(Bp,			bp					)
+
 /*
  * add.<type> - add two values
  *
@@ -971,34 +1000,6 @@ DEFINE_INST_O1	(Call_I4,		call.i4,			Imm32	)
  *     #ACC (invalid return_address is specified)
  */
 DEFINE_INST		(Ret,			ret					)
-
-/*
- * nop - no operation
- *
- * expression:
- *     nop
- * operation:
- *     do nothing
- * stack changes:
- *     none
- * exceptions:
- *     none
- */
-DEFINE_INST		(Nop,			nop					)
-
-/*
- * bp - breakpoint
- *
- * expression:
- *     nop
- * operation:
- *     RaiseException(#BP)
- * stack changes:
- *     none
- * exceptions:
- *     #BP (breakpoint detected)
- */
-DEFINE_INST		(Bp,			bp					)
 
 /*
  * ldvmsr <vmsr_index> - load virtual machine special register
