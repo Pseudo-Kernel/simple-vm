@@ -94,6 +94,7 @@ namespace VM_NAMESPACE
 			Mod_U8,
 			Mod_F4,
 			Mod_F8,
+
 			Shl_I4,
 			Shl_I8,
 			Shl_U4,
