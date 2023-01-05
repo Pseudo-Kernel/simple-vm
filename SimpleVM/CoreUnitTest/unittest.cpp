@@ -909,11 +909,12 @@ namespace CoreUnitTest
 
         struct EmitInfo
         {
-            EmitInfo(Opcode::T Code) :
-                Code(Code), Op() {}
-            EmitInfo(Opcode::T Code, Operand Op) :
-                Code(Code), Op(Op) {}
+            EmitInfo(bool ExpectTrap, Opcode::T Code) :
+                ExpectTrap(ExpectTrap), Code(Code), Op() {}
+            EmitInfo(bool ExpectTrap, Opcode::T Code, Operand Op) :
+                ExpectTrap(ExpectTrap), Code(Code), Op(Op) {}
 
+            bool ExpectTrap; // expects instruction may cause trap (including bp instruction)
             Opcode::T Code;
             Operand Op;
         };
@@ -1044,6 +1045,7 @@ namespace CoreUnitTest
             GuestArgumentStack_ = GuestMemory(GuestArgumentStack.ResultAddress, GuestArgumentStack.Size);
 
             ExecutionContext_ = ExecutionContext;
+            ExecutionContextInitial_ = ExecutionContext;
             Memory_ = std::move(VMM);
         }
 
@@ -1127,33 +1129,64 @@ namespace CoreUnitTest
 
         void DoSingleTest(std::vector<EmitInfo> EmitOp, ExceptionState::T ExpectedExceptionState, int32_t ExpectedStackConsumed)
         {
-            VMBytecodeEmitter Emitter;
-            auto PrevIP = ExecutionContext_.IP;
-            uint32_t PrevStackTop = ExecutionContext_.Stack.TopOffset();
-            unsigned char* HostAddress = reinterpret_cast<unsigned char*>
-                (Memory_->HostAddress(ExecutionContext_.IP, 0x1000));
+            ExecutionContext_ = ExecutionContextInitial_;
 
-            Emitter.BeginEmit();
+            uint32_t PrevIP = ExecutionContext_.IP;
+            uint32_t PrevStackTop = ExecutionContext_.Stack.TopOffset();
+            uint32_t CodeSize = static_cast<uint32_t>(GuestCode_.Size);
+            unsigned char* HostAddress = reinterpret_cast<unsigned char*>
+                (Memory_->HostAddress(ExecutionContext_.IP, CodeSize));
+
+            size_t ResultSize = 0;
+            uint32_t TotalEmitSize = 0;
+            uint32_t ExpectedIPOffset = 0;
+            int ExpectedStepCount = 0;
+            int TotalEmitCount = 0;
+            bool ExpectedTrap = false;
+
+            VMBytecodeEmitter Emitter;
+
             for (auto& it : EmitOp)
             {
+                if (it.ExpectTrap)
+                {
+                    if (!ExpectedTrap)
+                    {
+                        ExpectedTrap = true;
+                        ExpectedIPOffset = TotalEmitSize;
+                        ExpectedStepCount = TotalEmitCount;
+                    }
+                }
+
+                Emitter.BeginEmit();
                 if (it.Op.Type == OperandType::T::None)
                     Emitter.Emit(it.Code);
                 else
                     Emitter.Emit(it.Code, it.Op);
+                
+                Assert::IsTrue(
+                    Emitter.EndEmit(HostAddress + TotalEmitSize,
+                        CodeSize - TotalEmitSize, &ResultSize),
+                    L"emit failed");
+
+                TotalEmitCount++;
+                TotalEmitSize += static_cast<uint32_t>(ResultSize);
             }
 
-            int EmitCount = static_cast<int>(EmitOp.size());
-            size_t ResultSize = 0;
-            bool EmitResult = Emitter.EndEmit(HostAddress, GuestCode_.Size, &ResultSize);
+            if (!ExpectedTrap)
+            {
+                ExpectedIPOffset = TotalEmitSize;
+                ExpectedStepCount = TotalEmitCount;
+            }
 
-            Logger::WriteMessage(Format(
-                "EmitResult %d, size %zd\n", EmitResult, ResultSize).c_str());
+            Logger::WriteMessage(
+                Format("Emit size %d\n", TotalEmitSize).c_str());
 
             VMBytecodeInterpreter Interpreter(*Memory_.get());
-            int ExecStepCount = Interpreter.Execute(ExecutionContext_, EmitCount);
+            int ExecStepCount = Interpreter.Execute(ExecutionContext_, TotalEmitCount);
 
-            Assert::AreEqual(ExecStepCount, EmitCount, L"instruction end unreachable");
-            Assert::AreEqual<size_t>(ExecutionContext_.IP, PrevIP + ResultSize, L"IP mismatch");
+            Assert::AreEqual(ExecStepCount, ExpectedStepCount, L"instruction end unreachable");
+            Assert::AreEqual<size_t>(ExecutionContext_.IP, PrevIP + ExpectedIPOffset, L"IP mismatch");
             Assert::AreEqual<uint32_t>(ExecutionContext_.ExceptionState, ExpectedExceptionState, L"exception state mismatch");
 
             uint32_t CurrentStackTop = ExecutionContext_.Stack.TopOffset();
@@ -1178,85 +1211,337 @@ namespace CoreUnitTest
             VerifyStackHelper(ExecutionContext_.Stack, ExpectedStackValues...);
         }
 
+        template <
+            typename T,
+            typename = std::enable_if_t<std::is_integral<T>::value || std::is_floating_point<T>::value>>
+            void Test_LoadImm1_Op(Opcode::T TestOp, T Value1, T ResultExpected)
+        {
+            Opcode::T LoadOp = Opcode::T::Ldimm_I4;
+            switch (sizeof(T))
+            {
+            case 1: LoadOp = Opcode::T::Ldimm_I1; break;
+            case 2: LoadOp = Opcode::T::Ldimm_I2; break;
+            case 4: LoadOp = Opcode::T::Ldimm_I4; break;
+            case 8: LoadOp = Opcode::T::Ldimm_I8; break;
+            default: Assert::IsTrue(false);
+            }
+
+            Operand Operand1;
+            if (std::is_floating_point<T>::value)
+            {
+                if (sizeof(T) == sizeof(double))
+                {
+                    Operand1 = OperandHelper(Fp64ToU64(double(Value1)));
+                }
+                else
+                {
+                    Operand1 = OperandHelper(Fp32ToU32(float(Value1)));
+                }
+            }
+            else
+            {
+                if (sizeof(T) == sizeof(uint64_t))
+                {
+                    Operand1 = OperandHelper(uint64_t(Value1));
+                }
+                else
+                {
+                    Operand1 = OperandHelper(uint32_t(Value1));
+                }
+            }
+
+            DoSingleTest(std::vector<EmitInfo>
+            {
+                EmitInfo(false, LoadOp, Operand1),
+                EmitInfo(false, TestOp),
+            }, ExceptionState::T::None, sizeof(T), ResultExpected);
+
+            DoSingleTest(std::vector<EmitInfo>
+            {
+                EmitInfo(true, TestOp),
+            }, ExceptionState::T::StackOverflow, 0);
+        }
+
+        template <
+            typename T,
+            typename = std::enable_if_t<std::is_integral<T>::value || std::is_floating_point<T>::value>>
+            void Test_LoadImm2_Op(Opcode::T TestOp, T Value1, T Value2, T ResultExpected)
+        {
+            Opcode::T LoadOp = Opcode::T::Ldimm_I4;
+            switch (sizeof(T))
+            {
+            case 1: LoadOp = Opcode::T::Ldimm_I1; break;
+            case 2: LoadOp = Opcode::T::Ldimm_I2; break;
+            case 4: LoadOp = Opcode::T::Ldimm_I4; break;
+            case 8: LoadOp = Opcode::T::Ldimm_I8; break;
+            default: Assert::IsTrue(false);
+            }
+
+            Operand Operand1, Operand2;
+            if (std::is_floating_point<T>::value)
+            {
+                if (sizeof(T) == sizeof(double))
+                {
+                    Operand1 = OperandHelper(Fp64ToU64(double(Value1)));
+                    Operand2 = OperandHelper(Fp64ToU64(double(Value2)));
+                }
+                else
+                {
+                    Operand1 = OperandHelper(Fp32ToU32(float(Value1)));
+                    Operand2 = OperandHelper(Fp32ToU32(float(Value2)));
+                }
+            }
+            else
+            {
+                if (sizeof(T) == sizeof(uint64_t))
+                {
+                    Operand1 = OperandHelper(uint64_t(Value1));
+                    Operand2 = OperandHelper(uint64_t(Value2));
+                }
+                else
+                {
+                    Operand1 = OperandHelper(uint32_t(Value1));
+                    Operand2 = OperandHelper(uint32_t(Value2));
+                }
+            }
+
+            DoSingleTest(std::vector<EmitInfo>
+            {
+                EmitInfo(false, LoadOp, Operand1),
+                EmitInfo(false, LoadOp, Operand2),
+                EmitInfo(false, TestOp),
+            }, ExceptionState::T::None, sizeof(T), ResultExpected);
+
+            DoSingleTest(std::vector<EmitInfo>
+            {
+                EmitInfo(true, TestOp),
+            }, ExceptionState::T::StackOverflow, 0);
+        }
+
+        TEST_METHOD(Inst_Nop)
+        {
+            Opcode::T TestOp = Opcode::T::Nop;
+            DoSingleTest(std::vector<EmitInfo>
+            {
+                EmitInfo(false, TestOp),
+            }, ExceptionState::T::None, 0);
+        }
+
+        TEST_METHOD(Inst_Bp)
+        {
+            Opcode::T TestOp = Opcode::T::Bp;
+            DoSingleTest(std::vector<EmitInfo>
+            {
+                EmitInfo(true, TestOp),
+            }, ExceptionState::T::Breakpoint, 0);
+        }
+
         TEST_METHOD(Inst_Add)
         {
-            if (1)
-            {
-                using TImm = uint32_t;
-                DoSingleTest(std::vector<EmitInfo>
-                {
-                    EmitInfo(Opcode::T::Ldimm_I4, OperandHelper(TImm(0x11223344))),
-                    EmitInfo(Opcode::T::Ldimm_I4, OperandHelper(TImm(0x44332211))),
-                    EmitInfo(Opcode::T::Add_I4),
-                }, ExceptionState::T::None, sizeof(TImm), 0x55555555);
-            }
+            Test_LoadImm2_Op<uint32_t>(Opcode::T::Add_I4, 0x11223344, 0x44332211, 0x55555555);
+            Test_LoadImm2_Op<uint32_t>(Opcode::T::Add_U4, 0x11223344, 0x44332211, 0x55555555);
 
-            if (1)
-            {
-                using TImm = uint32_t;
-                DoSingleTest(std::vector<EmitInfo>
-                {
-                    EmitInfo(Opcode::T::Ldimm_I4, OperandHelper(TImm(0x11223344))),
-                    EmitInfo(Opcode::T::Ldimm_I4, OperandHelper(TImm(0x44332211))),
-                    EmitInfo(Opcode::T::Add_U4),
-                }, ExceptionState::T::None, sizeof(TImm), 0x55555555);
-            }
+            Test_LoadImm2_Op<uint64_t>(Opcode::T::Add_I8, 0x11223344'55443322, 0x44332211'22334455, 0x55555555'77777777);
+            Test_LoadImm2_Op<uint64_t>(Opcode::T::Add_U8, 0x11223344'55443322, 0x44332211'22334455, 0x55555555'77777777);
 
-            if (1)
-            {
-                using TImm = uint64_t;
-                DoSingleTest(std::vector<EmitInfo>
-                {
-                    EmitInfo(Opcode::T::Ldimm_I8, OperandHelper(TImm(0x11223344'55443322))),
-                    EmitInfo(Opcode::T::Ldimm_I8, OperandHelper(TImm(0x44332211'22334455))),
-                    EmitInfo(Opcode::T::Add_I8),
-                }, ExceptionState::T::None, sizeof(TImm), 0x55555555'77777777);
-            }
-
-            if (1)
-            {
-                using TImm = uint64_t;
-                DoSingleTest(std::vector<EmitInfo>
-                {
-                    EmitInfo(Opcode::T::Ldimm_I8, OperandHelper(TImm(0x11223344'55443322))),
-                    EmitInfo(Opcode::T::Ldimm_I8, OperandHelper(TImm(0x44332211'22334455))),
-                    EmitInfo(Opcode::T::Add_U8),
-                }, ExceptionState::T::None, sizeof(TImm), 0x55555555'77777777);
-            }
-
-
-            if (1)
-            {
-                using TImm = uint32_t;
-                float v1 = 123.456f;
-                float v2 = 654.321f;
-                float vr = v1 + v2;
-                DoSingleTest(std::vector<EmitInfo>
-                {
-                    EmitInfo(Opcode::T::Ldimm_I4, OperandHelper(TImm(Fp32ToU32(v1)))),
-                    EmitInfo(Opcode::T::Ldimm_I4, OperandHelper(TImm(Fp32ToU32(v2)))),
-                    EmitInfo(Opcode::T::Add_F4),
-                }, ExceptionState::T::None, sizeof(TImm), vr);
-            }
-
-            if (1)
-            {
-                using TImm = uint64_t;
-                double v1 = 123.456;
-                double v2 = 654.321;
-                double vr = v1 + v2;
-                DoSingleTest(std::vector<EmitInfo>
-                {
-                    EmitInfo(Opcode::T::Ldimm_I8, OperandHelper(TImm(Fp64ToU64(v1)))),
-                    EmitInfo(Opcode::T::Ldimm_I8, OperandHelper(TImm(Fp64ToU64(v2)))),
-                    EmitInfo(Opcode::T::Add_F8),
-                }, ExceptionState::T::None, sizeof(TImm), vr);
-            }
+            Test_LoadImm2_Op<float>(Opcode::T::Add_F4, 123.456f, 654.321f, 123.456f + 654.321f);
+            Test_LoadImm2_Op<double>(Opcode::T::Add_F8, 123.456, 654.321, 123.456 + 654.321);
         }
+
+        TEST_METHOD(Inst_Sub)
+        {
+            Test_LoadImm2_Op<uint32_t>(Opcode::T::Sub_I4, 0x11223344, 0x44332211, 0xccef1133);
+            Test_LoadImm2_Op<uint32_t>(Opcode::T::Sub_U4, 0x11223344, 0x44332211, 0xccef1133);
+
+            Test_LoadImm2_Op<uint64_t>(Opcode::T::Sub_I8, 0x11223344'55443322, 0x44332211'22334455, 0xccef1133'3310eecd);
+            Test_LoadImm2_Op<uint64_t>(Opcode::T::Sub_U8, 0x11223344'55443322, 0x44332211'22334455, 0xccef1133'3310eecd);
+
+            Test_LoadImm2_Op<float>(Opcode::T::Sub_F4, 123.456f, 654.321f, 123.456f - 654.321f);
+            Test_LoadImm2_Op<double>(Opcode::T::Sub_F8, 123.456, 654.321, 123.456 - 654.321);
+        }
+
+        TEST_METHOD(Inst_Mul)
+        {
+            Test_LoadImm2_Op<uint32_t>(Opcode::T::Mul_I4, 0x1122, 0x3344, 0x36e5308);
+            Test_LoadImm2_Op<uint32_t>(Opcode::T::Mul_U4, 0x1122, 0x3344, 0x36e5308);
+
+            Test_LoadImm2_Op<uint64_t>(Opcode::T::Mul_I8, 0x11223344, 0x55667788, 0x5b736a6'0117d820);
+            Test_LoadImm2_Op<uint64_t>(Opcode::T::Mul_U8, 0x11223344, 0x55667788, 0x5b736a6'0117d820);
+
+            Test_LoadImm2_Op<float>(Opcode::T::Mul_F4, 123.456f, 654.321f, 123.456f * 654.321f);
+            Test_LoadImm2_Op<double>(Opcode::T::Mul_F8, 123.456, 654.321, 123.456 * 654.321);
+        }
+
+        TEST_METHOD(Inst_Mulh)
+        {
+            Test_LoadImm2_Op<uint32_t>(Opcode::T::Mulh_I4, 0x11223344, 0x55667788, 0x5b736a6);
+            Test_LoadImm2_Op<uint32_t>(Opcode::T::Mulh_U4, 0x11223344, 0x55667788, 0x5b736a6);
+
+            Test_LoadImm2_Op<uint64_t>(Opcode::T::Mulh_I8, 0x11223344'44332211, 0x44332211'11223344, 0x49081b6'07f13334);
+            Test_LoadImm2_Op<uint64_t>(Opcode::T::Mulh_U8, 0x11223344'44332211, 0x44332211'11223344, 0x49081b6'07f13334);
+        }
+
+        TEST_METHOD(Inst_Div)
+        {
+            Test_LoadImm2_Op<uint32_t>(Opcode::T::Div_I4, 0x44332211, 0x11223344, 3);
+            Test_LoadImm2_Op<uint32_t>(Opcode::T::Div_U4, 0x44332211, 0x11223344, 3);
+
+            if (1)
+            {
+                using TImm = uint32_t;
+                DoSingleTest(std::vector<EmitInfo>
+                {
+                    EmitInfo(false, Opcode::T::Ldimm_I4, OperandHelper(TImm(0x44332211))),
+                    EmitInfo(false, Opcode::T::Ldimm_I4, OperandHelper(TImm(0))),
+                    EmitInfo(true, Opcode::T::Div_I4),
+                }, ExceptionState::T::IntegerDivideByZero, 0);
+
+                DoSingleTest(std::vector<EmitInfo>
+                {
+                    EmitInfo(false, Opcode::T::Ldimm_I4, OperandHelper(TImm(0x44332211))),
+                    EmitInfo(false, Opcode::T::Ldimm_I4, OperandHelper(TImm(0))),
+                    EmitInfo(true, Opcode::T::Div_U4),
+                }, ExceptionState::T::IntegerDivideByZero, 0);
+            }
+
+            Test_LoadImm2_Op<uint64_t>(Opcode::T::Div_I8, 0x44332211'11223344, 0x11223344'44332211, 3);
+            Test_LoadImm2_Op<uint64_t>(Opcode::T::Div_U8, 0x44332211'11223344, 0x11223344'44332211, 3);
+
+            if (1)
+            {
+                using TImm = uint64_t;
+                DoSingleTest(std::vector<EmitInfo>
+                {
+                    EmitInfo(false, Opcode::T::Ldimm_I8, OperandHelper(TImm(0x44332211'11223344))),
+                    EmitInfo(false, Opcode::T::Ldimm_I8, OperandHelper(TImm(0))),
+                    EmitInfo(true, Opcode::T::Div_I8),
+                }, ExceptionState::T::IntegerDivideByZero, 0);
+
+                DoSingleTest(std::vector<EmitInfo>
+                {
+                    EmitInfo(false, Opcode::T::Ldimm_I8, OperandHelper(TImm(0x44332211'11223344))),
+                    EmitInfo(false, Opcode::T::Ldimm_I8, OperandHelper(TImm(0))),
+                    EmitInfo(true, Opcode::T::Div_U8),
+                }, ExceptionState::T::IntegerDivideByZero, 0);
+            }
+
+            Test_LoadImm2_Op(Opcode::T::Div_F4, 123.456f, 654.321f, 123.456f / 654.321f);
+            Test_LoadImm2_Op(Opcode::T::Div_F8, 123.456, 654.321, 123.456 / 654.321);
+        }
+
+        TEST_METHOD(Inst_Mod)
+        {
+            Test_LoadImm2_Op<uint32_t>(Opcode::T::Mod_I4, 0x44332211, 0x11223344, 0x10cc8845);
+            Test_LoadImm2_Op<uint32_t>(Opcode::T::Mod_U4, 0x44332211, 0x11223344, 0x10cc8845);
+
+            if (1)
+            {
+                using TImm = uint32_t;
+                DoSingleTest(std::vector<EmitInfo>
+                {
+                    EmitInfo(false, Opcode::T::Ldimm_I4, OperandHelper(TImm(0x44332211))),
+                    EmitInfo(false, Opcode::T::Ldimm_I4, OperandHelper(TImm(0))),
+                    EmitInfo(true, Opcode::T::Mod_I4),
+                }, ExceptionState::T::IntegerDivideByZero, 0);
+
+                DoSingleTest(std::vector<EmitInfo>
+                {
+                    EmitInfo(false, Opcode::T::Ldimm_I4, OperandHelper(TImm(0x44332211))),
+                    EmitInfo(false, Opcode::T::Ldimm_I4, OperandHelper(TImm(0))),
+                    EmitInfo(true, Opcode::T::Mod_U4),
+                }, ExceptionState::T::IntegerDivideByZero, 0);
+            }
+
+            Test_LoadImm2_Op<uint64_t>(Opcode::T::Mod_I8, 0x44332211'11223344, 0x11223344'44332211, 0x10cc8844'4488cd11);
+            Test_LoadImm2_Op<uint64_t>(Opcode::T::Mod_U8, 0x44332211'11223344, 0x11223344'44332211, 0x10cc8844'4488cd11);
+
+            if (1)
+            {
+                using TImm = uint64_t;
+                DoSingleTest(std::vector<EmitInfo>
+                {
+                    EmitInfo(false, Opcode::T::Ldimm_I8, OperandHelper(TImm(0x44332211'11223344))),
+                    EmitInfo(false, Opcode::T::Ldimm_I8, OperandHelper(TImm(0))),
+                    EmitInfo(true, Opcode::T::Mod_I8),
+                }, ExceptionState::T::IntegerDivideByZero, 0);
+
+                DoSingleTest(std::vector<EmitInfo>
+                {
+                    EmitInfo(false, Opcode::T::Ldimm_I8, OperandHelper(TImm(0x44332211'11223344))),
+                    EmitInfo(false, Opcode::T::Ldimm_I8, OperandHelper(TImm(0))),
+                    EmitInfo(true, Opcode::T::Mod_U8),
+                }, ExceptionState::T::IntegerDivideByZero, 0);
+            }
+
+            Test_LoadImm2_Op<float>(Opcode::T::Mod_F4, 654.321f, 123.456f, std::fmod(654.321f, 123.456f));
+            Test_LoadImm2_Op<double>(Opcode::T::Mod_F8, 654.321, 123.456, std::fmod(654.321, 123.456));
+        }
+
+        TEST_METHOD(Inst_Shl)
+        {
+            Test_LoadImm2_Op<uint32_t>(Opcode::T::Shl_I4, 0x44332211, 16, 0x22110000);
+            Test_LoadImm2_Op<uint32_t>(Opcode::T::Shl_U4, 0x44332211, 16, 0x22110000);
+
+            Test_LoadImm2_Op<uint64_t>(Opcode::T::Shl_I8, 0x44332211'11223344, 32, 0x11223344'00000000);
+            Test_LoadImm2_Op<uint64_t>(Opcode::T::Shl_U8, 0x44332211'11223344, 32, 0x11223344'00000000);
+        }
+
+        TEST_METHOD(Inst_Shr)
+        {
+            Test_LoadImm2_Op<uint32_t>(Opcode::T::Shr_I4, 0x44332211, 16, 0x4433);
+            Test_LoadImm2_Op<uint32_t>(Opcode::T::Shr_U4, 0x44332211, 16, 0x4433);
+
+            Test_LoadImm2_Op<uint64_t>(Opcode::T::Shr_I8, 0x44332211'11223344, 32, 0x44332211);
+            Test_LoadImm2_Op<uint64_t>(Opcode::T::Shr_U8, 0x44332211'11223344, 32, 0x44332211);
+        }
+
+        TEST_METHOD(Inst_And)
+        {
+            Test_LoadImm2_Op<uint32_t>(Opcode::T::And_X4, 0x44332211, 0xff00ff00, 0x44002200);
+            Test_LoadImm2_Op<uint64_t>(Opcode::T::And_X8, 0x44332211'11223344, 0xff00ff00'ff00ff00, 0x44002200'11003300);
+        }
+
+        TEST_METHOD(Inst_Or)
+        {
+            Test_LoadImm2_Op<uint32_t>(Opcode::T::Or_X4, 0x44002200, 0x00330011, 0x44332211);
+            Test_LoadImm2_Op<uint64_t>(Opcode::T::Or_X8, 0x44002200'11003300, 0x00330011'00220044, 0x44332211'11223344);
+        }
+
+        TEST_METHOD(Inst_Xor)
+        {
+            Test_LoadImm2_Op<uint32_t>(Opcode::T::Xor_X4, 0x44332211, 0xff00ff00, 0xbb33dd11);
+            Test_LoadImm2_Op<uint64_t>(Opcode::T::Xor_X8, 0x44332211'11223344, 0xff00ff00'ff00ff00, 0xbb33dd11ee22cc44);
+        }
+
+        TEST_METHOD(Inst_Not)
+        {
+            Test_LoadImm1_Op<uint32_t>(Opcode::T::Not_X4, 0x44332211, ~0x44332211);
+            Test_LoadImm1_Op<uint64_t>(Opcode::T::Not_X8, 0x44332211'11223344, ~0x44332211'11223344);
+        }
+
+        TEST_METHOD(Inst_Neg)
+        {
+            Test_LoadImm1_Op<uint32_t>(Opcode::T::Neg_I4, 0x44332211, ~0x44332211 + 1);
+            Test_LoadImm1_Op<uint64_t>(Opcode::T::Neg_I8, 0x44332211'11223344, ~0x44332211'11223344 + 1);
+
+            Test_LoadImm1_Op<float>(Opcode::T::Neg_F4, 123.456f, -123.456f);
+            Test_LoadImm1_Op<double>(Opcode::T::Neg_F8, 123.456, -123.456);
+        }
+
+        TEST_METHOD(Inst_Abs)
+        {
+            Test_LoadImm1_Op<uint32_t>(Opcode::T::Abs_I4, ~0x44332211 + 1, 0x44332211);
+            Test_LoadImm1_Op<uint64_t>(Opcode::T::Abs_I8, ~0x44332211'11223344 + 1, 0x44332211'11223344);
+
+            Test_LoadImm1_Op<float>(Opcode::T::Abs_F4, -123.456f, 123.456f);
+            Test_LoadImm1_Op<double>(Opcode::T::Abs_F8, -123.456, 123.456);
+        }
+
 
     private:
         std::unique_ptr<VMMemoryManager> Memory_;
         VMExecutionContext ExecutionContext_;
+        VMExecutionContext ExecutionContextInitial_;
 
         GuestMemory GuestCode_;
         GuestMemory GuestStack_;

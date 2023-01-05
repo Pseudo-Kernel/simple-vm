@@ -1104,7 +1104,11 @@ namespace VM_NAMESPACE
 
                 }
 
-                DASSERT(Result);
+                if (Context.ExceptionState != ExceptionState::T::None)
+                {
+                    printf(" ==> Exception hit, ExceptionState = %d\n", Context.ExceptionState);
+                    break;
+                }
 
                 Context.IP = Context.NextIP;
                 StepCount++;
@@ -1462,7 +1466,7 @@ namespace VM_NAMESPACE
 
             DASSERT(Type2 != FP_ZERO);
 
-            T Value = AbsOp1 - AbsOp1 / AbsOp2;
+            T Value = std::fmod(AbsOp1, AbsOp2); //AbsOp1 - AbsOp1 / AbsOp2;
 
             if (bool ResultNegative = (Op1 < 0) != (Op2 < 0))
             {
