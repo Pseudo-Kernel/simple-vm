@@ -123,10 +123,24 @@ namespace VM_NAMESPACE
         if (!Valid_)
             return false;
 
-        size_t BytecodeSize = 0;
+        DASSERT(0 <= Opcode_ && Opcode_ < std::size(InstructionList));
 
-        BytecodeSize += OpcodeSize_;
-        if (OperandCount_)
+        const auto& Entry = InstructionList[Opcode_];
+        bool HasOperand = false;
+
+        switch (Entry.Operands.size())
+        {
+        case 0: // no operands
+            break;
+        case 1: // 1 operand
+            HasOperand = true;
+            break;
+        default: // invalid
+            return false;
+        }
+
+        size_t BytecodeSize = OpcodeSize_;
+        if (HasOperand)
         {
             for (int i = 0; i < OperandCount_; i++)
                 BytecodeSize += OperandSize(i);
@@ -161,8 +175,12 @@ namespace VM_NAMESPACE
             *p++ = Opcode_ & 0x7f;
         }
 
-        for (int i = 0; i < ImmediateSize_; i++)
-            *p++ = Immediate_[i];
+        // ignore immediate bytes if instruction does not have operand
+        if (HasOperand)
+        {
+            for (int i = 0; i < ImmediateSize_; i++)
+                *p++ = Immediate_[i];
+        }
 
         DASSERT(p - Buffer == BytecodeSize);
 
