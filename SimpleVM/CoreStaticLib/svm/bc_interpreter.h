@@ -2274,8 +2274,8 @@ namespace VM_NAMESPACE
                 return false;
             }
 
-            if (!Context.Stack.Push(Value) ||
-                !Context.Stack.Push(Value))
+            // Push only once
+            if (!Context.Stack.Push(Value))
             {
                 RaiseException(Context, ExceptionState::T::StackOverflow);
                 return false;
@@ -2347,8 +2347,8 @@ namespace VM_NAMESPACE
                 return false;
             }
 
-            if (!Context.Stack.Push(Value2) ||
-                !Context.Stack.Push(Value1))
+            if (!Context.Stack.Push(Value1) ||
+                !Context.Stack.Push(Value2))
             {
                 RaiseException(Context, ExceptionState::T::StackOverflow);
                 return false;
