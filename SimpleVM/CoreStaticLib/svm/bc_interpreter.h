@@ -1,4 +1,4 @@
-
+ï»¿
 #pragma once
 
 #include "base.h"
@@ -514,6 +514,16 @@ namespace VM_NAMESPACE
                     break;
                 }
 
+                case Opcode::T::Cvt_I1_I4:
+                {
+                    Result = Inst_Cvt<int8_t, int32_t>(Context);
+                    break;
+                }
+                case Opcode::T::Cvt_I2_I4:
+                {
+                    Result = Inst_Cvt<int16_t, int32_t>(Context);
+                    break;
+                }
                 case Opcode::T::Cvt_I4_I1:
                 {
                     Result = Inst_Cvt<int32_t, int8_t>(Context);
@@ -529,45 +539,19 @@ namespace VM_NAMESPACE
                     Result = Inst_Cvt<int32_t, int64_t>(Context);
                     break;
                 }
-                case Opcode::T::Cvt_I4_U1:
+                case Opcode::T::Cvt_I8_I4:
                 {
-                    Result = Inst_Cvt<int32_t, uint8_t>(Context);
+                    Result = Inst_Cvt<int64_t, int32_t>(Context);
                     break;
                 }
-                case Opcode::T::Cvt_I4_U2:
+                case Opcode::T::Cvt_U1_U4:
                 {
-                    Result = Inst_Cvt<int32_t, uint16_t>(Context);
+                    Result = Inst_Cvt<uint8_t, uint32_t>(Context);
                     break;
                 }
-                case Opcode::T::Cvt_I4_U4:
+                case Opcode::T::Cvt_U2_U4:
                 {
-                    Result = Inst_Cvt<int32_t, uint32_t>(Context);
-                    break;
-                }
-                case Opcode::T::Cvt_I4_U8:
-                {
-                    Result = Inst_Cvt<int32_t, uint64_t>(Context);
-                    break;
-                }
-
-                case Opcode::T::Cvt_U4_I1:
-                {
-                    Result = Inst_Cvt<uint32_t, int8_t>(Context);
-                    break;
-                }
-                case Opcode::T::Cvt_U4_I2:
-                {
-                    Result = Inst_Cvt<uint32_t, int16_t>(Context);
-                    break;
-                }
-                case Opcode::T::Cvt_U4_I4:
-                {
-                    Result = Inst_Cvt<uint32_t, int32_t>(Context);
-                    break;
-                }
-                case Opcode::T::Cvt_U4_I8:
-                {
-                    Result = Inst_Cvt<uint32_t, int64_t>(Context);
+                    Result = Inst_Cvt<uint16_t, uint32_t>(Context);
                     break;
                 }
                 case Opcode::T::Cvt_U4_U1:
@@ -585,15 +569,24 @@ namespace VM_NAMESPACE
                     Result = Inst_Cvt<uint32_t, uint64_t>(Context);
                     break;
                 }
-
-                case Opcode::T::Cvt_I8_I4:
+                case Opcode::T::Cvt_U8_U4:
                 {
-                    Result = Inst_Cvt<int64_t, int32_t>(Context);
+                    Result = Inst_Cvt<uint64_t, uint32_t>(Context);
                     break;
                 }
-                case Opcode::T::Cvt_I8_U4:
+                case Opcode::T::Cvt_I1_U1:
                 {
-                    Result = Inst_Cvt<int64_t, uint32_t>(Context);
+                    Result = Inst_Cvt<int8_t, uint8_t>(Context);
+                    break;
+                }
+                case Opcode::T::Cvt_I2_U2:
+                {
+                    Result = Inst_Cvt<int16_t, uint16_t>(Context);
+                    break;
+                }
+                case Opcode::T::Cvt_I4_U4:
+                {
+                    Result = Inst_Cvt<int32_t, uint32_t>(Context);
                     break;
                 }
                 case Opcode::T::Cvt_I8_U8:
@@ -601,14 +594,19 @@ namespace VM_NAMESPACE
                     Result = Inst_Cvt<int64_t, uint64_t>(Context);
                     break;
                 }
-                case Opcode::T::Cvt_U8_I4:
+                case Opcode::T::Cvt_U1_I1:
                 {
-                    Result = Inst_Cvt<uint64_t, int32_t>(Context);
+                    Result = Inst_Cvt<uint8_t, int8_t>(Context);
                     break;
                 }
-                case Opcode::T::Cvt_U8_U4:
+                case Opcode::T::Cvt_U2_I2:
                 {
-                    Result = Inst_Cvt<uint64_t, uint32_t>(Context);
+                    Result = Inst_Cvt<uint16_t, int16_t>(Context);
+                    break;
+                }
+                case Opcode::T::Cvt_U4_I4:
+                {
+                    Result = Inst_Cvt<uint32_t, int32_t>(Context);
                     break;
                 }
                 case Opcode::T::Cvt_U8_I8:
@@ -1403,7 +1401,7 @@ namespace VM_NAMESPACE
             }
 
             // 
-            // We define Mod() for every Op1, Op2 ¡ô Z:
+            // We define Mod() for every Op1, Op2 ï½¡ãƒ»Z:
             //   Mod(Op1, Op2) = Op1 - Floor(Op1/Op2)             [Case 1. if Op1 >= 0 and Op2 > 0]
             //   Mod(Op1, Op2) = Undefined                        [Case 2. if Op2 == 0]
             //   Mod(Op1, Op2) = Sgn(Op1*Op2) * Mod(|Op1|, |Op2|) [Case 3. if Op1 < 0 or Op2 < 0]
@@ -1452,7 +1450,7 @@ namespace VM_NAMESPACE
             }
 
             // 
-            // We define Mod() for every Op1, Op2 ¡ô R:
+            // We define Mod() for every Op1, Op2 ï½¡ãƒ»R:
             //   Mod(Op1, Op2) = Op1 - Op1/Op2                    [Case 1. if Op1 >= 0 and Op2 > 0]
             //   Mod(Op1, Op2) = Undefined                        [Case 2. if |Op2| == 0]
             //   Mod(Op1, Op2) = Sgn(Op1*Op2) * Mod(|Op1|, |Op2|) [Case 3. if Op1 < 0 or Op2 < 0]

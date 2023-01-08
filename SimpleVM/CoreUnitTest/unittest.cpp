@@ -1,4 +1,4 @@
-#include "stdafx.h"
+﻿#include "stdafx.h"
 #include "unittest_helper.h"
 #include "CppUnitTest.h"
 
@@ -1110,16 +1110,6 @@ namespace CoreUnitTest
             return Operand(OperandType::Imm64, Value);
         }
 
-        uint32_t Fp32ToU32(float Value)
-        {
-            return Base::BitCast<uint32_t>(Value);
-        }
-
-        uint64_t Fp64ToU64(double Value)
-        {
-            return Base::BitCast<uint64_t>(Value);
-        }
-
         template <
             typename T,
             std::enable_if_t<std::is_integral<T>::value, bool> = true>
@@ -1133,7 +1123,7 @@ namespace CoreUnitTest
             std::enable_if_t<std::is_same<T, float>::value, bool> = true>
             uint32_t ToBinaryRepr(T Value)
         {
-            return Fp32ToU32(Value);
+            return Base::BitCast<uint32_t>(Value);
         }
 
         template <
@@ -1141,7 +1131,7 @@ namespace CoreUnitTest
             std::enable_if_t<std::is_same<T, double>::value, bool> = true>
             uint64_t ToBinaryRepr(T Value)
         {
-            return Fp64ToU64(Value);
+            return Base::BitCast<uint64_t>(Value);
         }
 
 
@@ -1292,8 +1282,8 @@ namespace CoreUnitTest
                         // NOTE: this changes stack state
                         Assert::IsTrue(Stack->Pop(&Element));
                         Assert::AreEqual<TStackElement>(
-                            Element & OutputCompareMask, 
-                            (*PushedElementsIt) & OutputCompareMask, 
+                            Element, //Element & OutputCompareMask,
+                            (*PushedElementsIt), //(*PushedElementsIt) & OutputCompareMask,
                             L"result mismatch");
                     }
 
@@ -1312,8 +1302,8 @@ namespace CoreUnitTest
                         // NOTE: this changes stack state
                         Assert::IsTrue(Stack->Pop(&Element));
                         Assert::AreEqual<TStackElement>(
-                            Element & OutputCompareMask, 
-                            static_cast<TStackElement>(*PushedElementsIt) & OutputCompareMask, 
+                            Element, //Element & OutputCompareMask, 
+                            static_cast<TStackElement>(*PushedElementsIt), //static_cast<TStackElement>(*PushedElementsIt) & OutputCompareMask, 
                             L"result mismatch");
                     }
 
@@ -1407,9 +1397,10 @@ namespace CoreUnitTest
             typename = std::enable_if_t<std::is_integral<T>::value || std::is_floating_point<T>::value>,
             typename = std::enable_if_t<std::is_integral<U>::value || std::is_floating_point<U>::value>>
             void Test_LoadImm1_Op(
-                Opcode::T TestOp, T Value1, U ResultExpected)
+                Opcode::T TestOp, T Value1, U ResultExpected, bool AssumeResultSignExtended)
         {
-            Test_LoadImm1_Op(ExecutionContextInitial_, ExecutionContext_, TestOp, Value1, ResultExpected, true);
+            Test_LoadImm1_Op(ExecutionContextInitial_, ExecutionContext_, TestOp, Value1, 
+                ResultExpected, AssumeResultSignExtended);
         }
 
         template <
@@ -1546,8 +1537,8 @@ namespace CoreUnitTest
             Test_LoadImm2_Op<uint64_t>(Opcode::T::Add_I8, 0x11223344'55443322, 0x44332211'22334455, 0x55555555'77777777, true);
             Test_LoadImm2_Op<uint64_t>(Opcode::T::Add_U8, 0x11223344'55443322, 0x44332211'22334455, 0x55555555'77777777, false);
 
-            Test_LoadImm2_Op<float>(Opcode::T::Add_F4, 123.456f, 654.321f, 123.456f + 654.321f, false);
-            Test_LoadImm2_Op<double>(Opcode::T::Add_F8, 123.456, 654.321, 123.456 + 654.321, false);
+            Test_LoadImm2_Op<float>(Opcode::T::Add_F4, 123.456f, 654.321f, 123.456f + 654.321f, true);
+            Test_LoadImm2_Op<double>(Opcode::T::Add_F8, 123.456, 654.321, 123.456 + 654.321, true);
         }
 
         TEST_METHOD(Inst_Sub)
@@ -1558,8 +1549,8 @@ namespace CoreUnitTest
             Test_LoadImm2_Op<uint64_t>(Opcode::T::Sub_I8, 0x11223344'55443322, 0x44332211'22334455, 0xccef1133'3310eecd, true);
             Test_LoadImm2_Op<uint64_t>(Opcode::T::Sub_U8, 0x11223344'55443322, 0x44332211'22334455, 0xccef1133'3310eecd, false);
 
-            Test_LoadImm2_Op<float>(Opcode::T::Sub_F4, 123.456f, 654.321f, 123.456f - 654.321f, false);
-            Test_LoadImm2_Op<double>(Opcode::T::Sub_F8, 123.456, 654.321, 123.456 - 654.321, false);
+            Test_LoadImm2_Op<float>(Opcode::T::Sub_F4, 123.456f, 654.321f, 123.456f - 654.321f, true);
+            Test_LoadImm2_Op<double>(Opcode::T::Sub_F8, 123.456, 654.321, 123.456 - 654.321, true);
         }
 
         TEST_METHOD(Inst_Mul)
@@ -1570,8 +1561,8 @@ namespace CoreUnitTest
             Test_LoadImm2_Op<uint64_t>(Opcode::T::Mul_I8, 0x11223344, 0x55667788, 0x5b736a6'0117d820, true);
             Test_LoadImm2_Op<uint64_t>(Opcode::T::Mul_U8, 0x11223344, 0x55667788, 0x5b736a6'0117d820, false);
 
-            Test_LoadImm2_Op<float>(Opcode::T::Mul_F4, 123.456f, 654.321f, 123.456f * 654.321f, false);
-            Test_LoadImm2_Op<double>(Opcode::T::Mul_F8, 123.456, 654.321, 123.456 * 654.321, false);
+            Test_LoadImm2_Op<float>(Opcode::T::Mul_F4, 123.456f, 654.321f, 123.456f * 654.321f, true);
+            Test_LoadImm2_Op<double>(Opcode::T::Mul_F8, 123.456, 654.321, 123.456 * 654.321, true);
         }
 
         TEST_METHOD(Inst_Mulh)
@@ -1613,8 +1604,8 @@ namespace CoreUnitTest
             Test_LoadImm2_Op_Exception<uint64_t>(Opcode::Mod_I8, 0x44332211'11223344, 0, ExceptionState::T::IntegerDivideByZero);
             Test_LoadImm2_Op_Exception<uint64_t>(Opcode::Mod_U8, 0x44332211'11223344, 0, ExceptionState::T::IntegerDivideByZero);
 
-            Test_LoadImm2_Op<float>(Opcode::T::Mod_F4, 654.321f, 123.456f, std::fmod(654.321f, 123.456f), false);
-            Test_LoadImm2_Op<double>(Opcode::T::Mod_F8, 654.321, 123.456, std::fmod(654.321, 123.456), false);
+            Test_LoadImm2_Op<float>(Opcode::T::Mod_F4, 654.321f, 123.456f, std::fmod(654.321f, 123.456f), true);
+            Test_LoadImm2_Op<double>(Opcode::T::Mod_F8, 654.321, 123.456, std::fmod(654.321, 123.456), true);
         }
 
         TEST_METHOD(Inst_Shl)
@@ -1655,80 +1646,78 @@ namespace CoreUnitTest
 
         TEST_METHOD(Inst_Not)
         {
-            Test_LoadImm1_Op<uint32_t>(Opcode::T::Not_X4, 0x44332211, ~0x44332211);
-            Test_LoadImm1_Op<uint64_t>(Opcode::T::Not_X8, 0x44332211'11223344, ~0x44332211'11223344);
+            Test_LoadImm1_Op<uint32_t>(Opcode::T::Not_X4, 0x44332211, ~0x44332211, false);
+            Test_LoadImm1_Op<uint64_t>(Opcode::T::Not_X8, 0x44332211'11223344, ~0x44332211'11223344, false);
         }
 
         TEST_METHOD(Inst_Neg)
         {
-            Test_LoadImm1_Op<uint32_t>(Opcode::T::Neg_I4, 0x44332211, ~0x44332211 + 1);
-            Test_LoadImm1_Op<uint64_t>(Opcode::T::Neg_I8, 0x44332211'11223344, ~0x44332211'11223344 + 1);
+            Test_LoadImm1_Op<uint32_t>(Opcode::T::Neg_I4, 0x44332211, ~0x44332211 + 1, true);
+            Test_LoadImm1_Op<uint64_t>(Opcode::T::Neg_I8, 0x44332211'11223344, ~0x44332211'11223344 + 1, true);
 
-            Test_LoadImm1_Op<float>(Opcode::T::Neg_F4, 123.456f, -123.456f);
-            Test_LoadImm1_Op<double>(Opcode::T::Neg_F8, 123.456, -123.456);
+            Test_LoadImm1_Op<float>(Opcode::T::Neg_F4, 123.456f, -123.456f, true);
+            Test_LoadImm1_Op<double>(Opcode::T::Neg_F8, 123.456, -123.456, true);
         }
 
         TEST_METHOD(Inst_Abs)
         {
-            Test_LoadImm1_Op<uint32_t>(Opcode::T::Abs_I4, ~0x44332211 + 1, 0x44332211);
-            Test_LoadImm1_Op<uint64_t>(Opcode::T::Abs_I8, ~0x44332211'11223344 + 1, 0x44332211'11223344);
+            Test_LoadImm1_Op<uint32_t>(Opcode::T::Abs_I4, ~0x44332211 + 1, 0x44332211, true);
+            Test_LoadImm1_Op<uint64_t>(Opcode::T::Abs_I8, ~0x44332211'11223344 + 1, 0x44332211'11223344, true);
 
-            Test_LoadImm1_Op<float>(Opcode::T::Abs_F4, -123.456f, 123.456f);
-            Test_LoadImm1_Op<double>(Opcode::T::Abs_F8, -123.456, 123.456);
+            Test_LoadImm1_Op<float>(Opcode::T::Abs_F4, -123.456f, 123.456f, true);
+            Test_LoadImm1_Op<double>(Opcode::T::Abs_F8, -123.456, 123.456, true);
         }
 
         TEST_METHOD(Inst_Cvt2i)
         {
-            Test_LoadImm1_Op<float, uint32_t>(Opcode::T::Cvt2i_F4_I4, 123.45f, 123);
-            Test_LoadImm1_Op<float, uint64_t>(Opcode::T::Cvt2i_F4_I8, 123.45f, 123);
+            Test_LoadImm1_Op<float, uint32_t>(Opcode::T::Cvt2i_F4_I4, 123.45f, 123, true);
+            Test_LoadImm1_Op<float, uint64_t>(Opcode::T::Cvt2i_F4_I8, 123.45f, 123, true);
 
-            Test_LoadImm1_Op<double, uint32_t>(Opcode::T::Cvt2i_F8_I4, 123.45, 123);
-            Test_LoadImm1_Op<double, uint64_t>(Opcode::T::Cvt2i_F8_I8, 123.45, 123);
+            Test_LoadImm1_Op<double, uint32_t>(Opcode::T::Cvt2i_F8_I4, 123.45, 123, true);
+            Test_LoadImm1_Op<double, uint64_t>(Opcode::T::Cvt2i_F8_I8, 123.45, 123, true);
         }
 
         TEST_METHOD(Inst_Cvt2f)
         {
-            Test_LoadImm1_Op<uint32_t, float>(Opcode::T::Cvt2f_I4_F4, 123, 123.f);
-            Test_LoadImm1_Op<uint32_t, double>(Opcode::T::Cvt2f_I4_F8, 123, 123.0);
+            Test_LoadImm1_Op<uint32_t, float>(Opcode::T::Cvt2f_I4_F4, 123, 123.f, true);
+            Test_LoadImm1_Op<uint32_t, double>(Opcode::T::Cvt2f_I4_F8, 123, 123.0, true);
 
-            Test_LoadImm1_Op<uint64_t, float>(Opcode::T::Cvt2f_I8_F4, 123, 123.f);
-            Test_LoadImm1_Op<uint64_t, double>(Opcode::T::Cvt2f_I8_F8, 123, 123.0);
+            Test_LoadImm1_Op<uint64_t, float>(Opcode::T::Cvt2f_I8_F4, 123, 123.f, true);
+            Test_LoadImm1_Op<uint64_t, double>(Opcode::T::Cvt2f_I8_F8, 123, 123.0, true);
         }
 
         TEST_METHOD(Inst_Cvtff)
         {
-            Test_LoadImm1_Op<float, double>(Opcode::T::Cvtff_F4_F8, 123.f, 123.0);
-            Test_LoadImm1_Op<double, float>(Opcode::T::Cvtff_F8_F4, 123.0, 123.f);
+            Test_LoadImm1_Op<float, double>(Opcode::T::Cvtff_F4_F8, 123.f, 123.0, true);
+            Test_LoadImm1_Op<double, float>(Opcode::T::Cvtff_F8_F4, 123.0, 123.f, true);
         }
 
         TEST_METHOD(Inst_Cvt)
         {
-            Test_LoadImm1_Op<uint32_t, uint8_t>(Opcode::T::Cvt_I4_I1, 0xffffff81, 0x81);
-            Test_LoadImm1_Op<uint32_t, uint16_t>(Opcode::T::Cvt_I4_I2, 0xffffff81, 0xff81);
-            Test_LoadImm1_Op<uint32_t, uint64_t>(Opcode::T::Cvt_I4_I8, 0xffffff81, 0xffffffff'ffffff81);
+            Test_LoadImm1_Op<uint8_t, uint32_t>(Opcode::T::Cvt_I1_I4, 0x81, 0xffffff81, true);
+            Test_LoadImm1_Op<uint16_t, uint32_t>(Opcode::T::Cvt_I2_I4, 0x8001, 0xffff8001, true);
+            Test_LoadImm1_Op<uint32_t, uint8_t>(Opcode::T::Cvt_I4_I1, 0xffffff81, 0x81, true);
+            Test_LoadImm1_Op<uint32_t, uint16_t>(Opcode::T::Cvt_I4_I2, 0xffff8001, 0x8001, true);
+            Test_LoadImm1_Op<uint32_t, uint64_t>(Opcode::T::Cvt_I4_I8, 0xffffff81, 0xffffffff'ffffff81, true);
+            Test_LoadImm1_Op<uint64_t, uint32_t>(Opcode::T::Cvt_I8_I4, 0xffffffff'ffffff81, 0xffffff81, true);
 
-            Test_LoadImm1_Op<uint32_t, uint8_t>(Opcode::T::Cvt_I4_U1, 0xffffff81, 0x81);
-            Test_LoadImm1_Op<uint32_t, uint16_t>(Opcode::T::Cvt_I4_U2, 0xffffff81, 0xff81);
-            Test_LoadImm1_Op<uint32_t, uint32_t>(Opcode::T::Cvt_I4_U4, 0xffffff81, 0xffffff81);
-            Test_LoadImm1_Op<uint32_t, uint64_t>(Opcode::T::Cvt_I4_U8, 0xffffff81, 0x00000000'ffffff81);
+            Test_LoadImm1_Op<uint8_t, uint32_t>(Opcode::T::Cvt_U1_U4, 0x81, 0x81, false);
+            Test_LoadImm1_Op<uint16_t, uint32_t>(Opcode::T::Cvt_U2_U4, 0x8001, 0x8001, false);
+            Test_LoadImm1_Op<uint32_t, uint8_t>(Opcode::T::Cvt_U4_U1, 0xffffff81, 0x81, false);
+            Test_LoadImm1_Op<uint32_t, uint16_t>(Opcode::T::Cvt_U4_U2, 0xffffff81, 0xff81, false);
+            Test_LoadImm1_Op<uint32_t, uint64_t>(Opcode::T::Cvt_U4_U8, 0xffffff81, 0x00000000'ffffff81, false);
+            Test_LoadImm1_Op<uint64_t, uint32_t>(Opcode::T::Cvt_U8_U4, 0xffffffff'ffffff81, 0xffffff81, false);
 
-            Test_LoadImm1_Op<uint32_t, uint8_t>(Opcode::T::Cvt_U4_I1, 0xffffff81, 0x81);
-            Test_LoadImm1_Op<uint32_t, uint16_t>(Opcode::T::Cvt_U4_I2, 0xffffff81, 0xff81);
-            Test_LoadImm1_Op<uint32_t, uint32_t>(Opcode::T::Cvt_U4_I4, 0xffffff81, 0xffffff81);
-            Test_LoadImm1_Op<uint32_t, uint64_t>(Opcode::T::Cvt_U4_I8, 0xffffff81, 0xffffffff'ffffff81);
+            Test_LoadImm1_Op<uint8_t, uint8_t>(Opcode::T::Cvt_I1_U1, 0x81, 0x81, false);
+            Test_LoadImm1_Op<uint16_t, uint16_t>(Opcode::T::Cvt_I2_U2, 0x8001, 0x8001, false);
+            Test_LoadImm1_Op<uint32_t, uint32_t>(Opcode::T::Cvt_I4_U4, 0x80000001, 0x80000001, false);
+            Test_LoadImm1_Op<uint64_t, uint64_t>(Opcode::T::Cvt_I8_U8, 0x80000000'00000001, 0x80000000'00000001, false);
 
-            Test_LoadImm1_Op<uint32_t, uint8_t>(Opcode::T::Cvt_U4_U1, 0xffffff81, 0x81);
-            Test_LoadImm1_Op<uint32_t, uint16_t>(Opcode::T::Cvt_U4_U2, 0xffffff81, 0xff81);
-            Test_LoadImm1_Op<uint32_t, uint64_t>(Opcode::T::Cvt_U4_U8, 0xffffff81, 0x00000000'ffffff81);
-
-            Test_LoadImm1_Op<uint64_t, uint32_t>(Opcode::T::Cvt_I8_I4, 0xffffffff'ffffff81, 0xffffff81);
-            Test_LoadImm1_Op<uint64_t, uint64_t>(Opcode::T::Cvt_I8_U4, 0xffffffff'ffffff81, 0xffffff81);
-            Test_LoadImm1_Op<uint64_t, uint64_t>(Opcode::T::Cvt_I8_U8, 0xffffffff'ffffff81, 0xffffffff'ffffff81);
-            Test_LoadImm1_Op<uint64_t, uint32_t>(Opcode::T::Cvt_U8_I4, 0xffffffff'ffffff81, 0xffffff81);
-            Test_LoadImm1_Op<uint64_t, uint32_t>(Opcode::T::Cvt_U8_U4, 0xffffffff'ffffff81, 0xffffff81);
-            Test_LoadImm1_Op<uint64_t, uint64_t>(Opcode::T::Cvt_U8_I8, 0xffffffff'ffffff81, 0xffffffff'ffffff81);
+            Test_LoadImm1_Op<uint8_t, uint8_t>(Opcode::T::Cvt_U1_I1, 0x81, 0x81, true);
+            Test_LoadImm1_Op<uint16_t, uint16_t>(Opcode::T::Cvt_U2_I2, 0x8001, 0x8001, true);
+            Test_LoadImm1_Op<uint32_t, uint32_t>(Opcode::T::Cvt_U4_I4, 0x80000001, 0x80000001, true);
+            Test_LoadImm1_Op<uint64_t, uint64_t>(Opcode::T::Cvt_U8_I8, 0x80000000'00000001, 0x80000000'00000001, true);
         }
-
 
     private:
         std::unique_ptr<VMMemoryManager> Memory_;

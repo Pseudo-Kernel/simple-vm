@@ -1,4 +1,4 @@
-
+﻿
 /*
  * VM instructions table (inst_table.inc)
  */
@@ -472,10 +472,26 @@ DEFINE_INST		(Cvtff_F8_F4,	cvtff.f8.f4			)
  * cvt.<source_type>.<dest_type> - convert integer to integer
  *
  * expression:
- *     cvt.i4.<i1|i2|i8|u1|u2|u4|u8> (convert 32-bit signed integer to integer)
- *     cvt.u4.<i1|i2|i4|i8|u1|u2|u8> (convert 32-bit unsigned integer to integer)
- *     cvt.i8.<i4|u4|u8> (convert 64-bit signed integer to integer)
- *     cvt.u8.<i4|u4|i8> (convert 64-bit unsigned integer to integer)
+ *     cvt.i1.i4 (convert 8-bit signed integer to 32-bit signed integer)
+ *     cvt.i2.i4 (convert 16-bit signed integer to 32-bit signed integer)
+ *     cvt.i4.i1 (convert 32-bit signed integer to 8-bit signed integer)
+ *     cvt.i4.i2 (convert 32-bit signed integer to 16-bit signed integer)
+ *     cvt.i4.i8 (convert 32-bit signed integer to 64-bit signed integer)
+ *     cvt.i8.i4 (convert 64-bit signed integer to 32-bit signed integer)
+ *     cvt.u1.u4 (convert 8-bit unsigned integer to 32-bit unsigned integer)
+ *     cvt.u2.u4 (convert 16-bit unsigned integer to 32-bit unsigned integer)
+ *     cvt.u4.u1 (convert 32-bit unsigned integer to 8-bit unsigned integer)
+ *     cvt.u4.u2 (convert 32-bit unsigned integer to 16-bit unsigned integer)
+ *     cvt.u4.u8 (convert 32-bit unsigned integer to 64-bit unsigned integer)
+ *     cvt.u8.u4 (convert 64-bit unsigned integer to 32-bit unsigned integer)
+ *     cvt.i1.u1 (convert 8-bit signed integer to 8-bit unsigned integer)
+ *     cvt.i2.u2 (convert 16-bit signed integer to 16-bit unsigned integer)
+ *     cvt.i4.u4 (convert 32-bit signed integer to 32-bit unsigned integer)
+ *     cvt.i8.u8 (convert 64-bit signed integer to 64-bit unsigned integer)
+ *     cvt.u1.i1 (convert 8-bit unsigned integer to 8-bit signed integer)
+ *     cvt.u2.i2 (convert 16-bit unsigned integer to 16-bit signed integer)
+ *     cvt.u4.i4 (convert 32-bit unsigned integer to 32-bit signed integer)
+ *     cvt.u8.i8 (convert 64-bit unsigned integer to 64-bit signed integer)
  * operation:
  *     v1 = PopT(source_type)
  *     PushT(dest_type, IntegerToIntegerT(source_type, v1, dest_type))
@@ -484,26 +500,27 @@ DEFINE_INST		(Cvtff_F8_F4,	cvtff.f8.f4			)
  * exceptions:
  *     #STK (stack overflows/underflows during execution)
  */
+DEFINE_INST		(Cvt_I1_I4,		cvt.i1.i4			)
+DEFINE_INST		(Cvt_I2_I4,		cvt.i2.i4			)
 DEFINE_INST		(Cvt_I4_I1,		cvt.i4.i1			)
 DEFINE_INST		(Cvt_I4_I2,		cvt.i4.i2			)
 DEFINE_INST		(Cvt_I4_I8,		cvt.i4.i8			)
-DEFINE_INST		(Cvt_I4_U1,		cvt.i4.u1			)
-DEFINE_INST		(Cvt_I4_U2,		cvt.i4.u2			)
-DEFINE_INST		(Cvt_I4_U4,		cvt.i4.u4			)
-DEFINE_INST		(Cvt_I4_U8,		cvt.i4.u8			)
-DEFINE_INST		(Cvt_U4_I1,		cvt.u4.i1			)
-DEFINE_INST		(Cvt_U4_I2,		cvt.u4.i2			)
-DEFINE_INST		(Cvt_U4_I4,		cvt.u4.i4			)
-DEFINE_INST		(Cvt_U4_I8,		cvt.u4.i8			)
+DEFINE_INST		(Cvt_I8_I4,		cvt.i8.i4			)
+DEFINE_INST		(Cvt_U1_U4,		cvt.u1.u4			)
+DEFINE_INST		(Cvt_U2_U4,		cvt.u2.u4			)
 DEFINE_INST		(Cvt_U4_U1,		cvt.u4.u1			)
 DEFINE_INST		(Cvt_U4_U2,		cvt.u4.u2			)
 DEFINE_INST		(Cvt_U4_U8,		cvt.u4.u8			)
-DEFINE_INST		(Cvt_I8_I4,		cvt.i8.i4			)
-DEFINE_INST		(Cvt_I8_U4,		cvt.i8.u4			)
-DEFINE_INST		(Cvt_I8_U8,		cvt.i8.u8			)
-DEFINE_INST		(Cvt_U8_I4,		cvt.u8.i4			)
 DEFINE_INST		(Cvt_U8_U4,		cvt.u8.u4			)
+DEFINE_INST		(Cvt_I1_U1,		cvt.i1.u1			)
+DEFINE_INST		(Cvt_I2_U2,		cvt.i2.u2			)
+DEFINE_INST		(Cvt_I4_U4,		cvt.i4.u4			)
+DEFINE_INST		(Cvt_I8_U8,		cvt.i8.u8			)
+DEFINE_INST		(Cvt_U1_I1,		cvt.u1.i1			)
+DEFINE_INST		(Cvt_U2_I2,		cvt.u2.i2			)
+DEFINE_INST		(Cvt_U4_I4,		cvt.u4.i4			)
 DEFINE_INST		(Cvt_U8_I8,		cvt.u8.i8			)
+
 
 /*
  * ldimm.<type> <value> - load immediate value

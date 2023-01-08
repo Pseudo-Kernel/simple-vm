@@ -1,4 +1,4 @@
-#pragma once
+﻿#pragma once
 
 struct DataAreaRegister
 {
@@ -191,7 +191,8 @@ public:
         std::enable_if_t<std::is_floating_point<T>::value, bool> = true>
         bool Push(const T& Value) noexcept
     {
-        return Push(Base::BitCast<Base::ToIntegralType<T>::type>(Value)); // use safer cast
+        using TSignedInt = typename std::make_signed_t<typename Base::ToIntegralType<T>::type>;
+        return Push(Base::BitCast<TSignedInt>(Value)); // use safer cast
     }
 
     template <
