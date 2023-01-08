@@ -1365,6 +1365,27 @@ namespace CoreUnitTest
             typename U = T,
             typename = std::enable_if_t<std::is_integral<T>::value || std::is_floating_point<T>::value>,
             typename = std::enable_if_t<std::is_integral<U>::value || std::is_floating_point<U>::value>>
+            void Test_LoadN_Op(
+                std::vector<T> LoadValues,
+                Opcode::T TestOp,
+                U OperandValue1,
+                uint32_t ExpectedOutputResultSize,
+                ExceptionState::T ExpectedExceptionState,
+                StackState ExpectedStackState,
+                StackState ExpectedArgumentStackState,
+                StackState ExpectedLocalVarStackState)
+        {
+            Test_LoadN_Op(ExecutionContextInitial_, ExecutionContext_,
+                LoadValues, TestOp, OperandValue1, ExpectedOutputResultSize, ExpectedExceptionState, 
+                ExpectedStackState, ExpectedArgumentStackState, ExpectedLocalVarStackState);
+        }
+
+
+        template <
+            typename T,
+            typename U = T,
+            typename = std::enable_if_t<std::is_integral<T>::value || std::is_floating_point<T>::value>,
+            typename = std::enable_if_t<std::is_integral<U>::value || std::is_floating_point<U>::value>>
             void Test_LoadImm1_Op(
                 const VMExecutionContext& InitialContext, VMExecutionContext& ResultContext, 
                 Opcode::T TestOp, T Value1, U ResultExpected, bool AssumeResultSignExtended)
@@ -1717,6 +1738,464 @@ namespace CoreUnitTest
             Test_LoadImm1_Op<uint16_t, uint16_t>(Opcode::T::Cvt_U2_I2, 0x8001, 0x8001, true);
             Test_LoadImm1_Op<uint32_t, uint32_t>(Opcode::T::Cvt_U4_I4, 0x80000001, 0x80000001, true);
             Test_LoadImm1_Op<uint64_t, uint64_t>(Opcode::T::Cvt_U8_I8, 0x80000000'00000001, 0x80000000'00000001, true);
+        }
+
+        TEST_METHOD(Inst_Ldimm)
+        {
+            //
+            // normal test
+            //
+
+            Test_NoLoad_Op<uint8_t>(Opcode::T::Ldimm_I1, 0x81, 0, ExceptionState::T::None,
+                StackState(std::vector<uint64_t> { 0xffffffff'ffffff81 }),
+                StackState(), StackState());
+
+            Test_NoLoad_Op<uint16_t>(Opcode::T::Ldimm_I2, 0x8001, 0, ExceptionState::T::None,
+                StackState(std::vector<uint64_t> { 0xffffffff'ffff8001 }),
+                StackState(), StackState());
+
+            Test_NoLoad_Op<uint32_t>(Opcode::T::Ldimm_I4, 0x80000001, 0, ExceptionState::T::None,
+                StackState(std::vector<uint64_t> { 0xffffffff'80000001 }),
+                StackState(), StackState());
+
+            Test_NoLoad_Op<uint64_t>(Opcode::T::Ldimm_I8, 0x80000000'00000001, 0, ExceptionState::T::None,
+                StackState(std::vector<uint64_t> { 0x80000000'00000001 }),
+                StackState(), StackState());
+
+
+            //
+            // stack overflow test
+            //
+
+            VMExecutionContext InitialContext = ExecutionContextInitial_;
+            VMExecutionContext ReturnContext;
+            InitialContext.Stack.SetTopOffset(0); // end of stack
+
+            Test_NoLoad_Op<uint8_t>(InitialContext, ReturnContext,
+                Opcode::T::Ldimm_I1, 0x81, 0, ExceptionState::T::StackOverflow,
+                StackState(true),
+                StackState(), StackState());
+
+            Test_NoLoad_Op<uint16_t>(InitialContext, ReturnContext,
+                Opcode::T::Ldimm_I2, 0x8001, 0, ExceptionState::T::StackOverflow,
+                StackState(true),
+                StackState(), StackState());
+
+            Test_NoLoad_Op<uint32_t>(InitialContext, ReturnContext,
+                Opcode::T::Ldimm_I4, 0x80000001, 0, ExceptionState::T::StackOverflow,
+                StackState(true),
+                StackState(), StackState());
+
+            Test_NoLoad_Op<uint64_t>(InitialContext, ReturnContext,
+                Opcode::T::Ldimm_I8, 0x80000000'00000001, 0, ExceptionState::T::StackOverflow,
+                StackState(true),
+                StackState(), StackState());
+        }
+
+        //Ldarg,
+        //Ldvar,
+        //Starg,
+        //Stvar,
+
+        TEST_METHOD(Inst_Dup)
+        {
+            Test_LoadN_Op<uint32_t>(
+                std::vector<uint32_t> { 0x87654321 },
+                Opcode::T::Dup, 0, 0, ExceptionState::T::None,
+                StackState(std::vector<uint64_t> { 0xffffffff'87654321, 0xffffffff'87654321 }),
+                StackState(), StackState());
+
+            // stack overflow test
+            VMExecutionContext InitialContext = ExecutionContextInitial_;
+            VMExecutionContext ReturnContext;
+            InitialContext.Stack.SetTopOffset(0); // end of stack
+
+            Test_LoadN_Op<uint32_t>(
+                InitialContext, ReturnContext,
+                std::vector<uint32_t> { },
+                Opcode::T::Dup, 0, 0, ExceptionState::T::StackOverflow,
+                StackState(true),
+                StackState(), StackState());
+        }
+
+        TEST_METHOD(Inst_Dup2)
+        {
+            Test_LoadN_Op<uint32_t>(
+                std::vector<uint32_t> { 0x87654321, 0x12345678 },
+                Opcode::T::Dup2, 0, 0, ExceptionState::T::None,
+                StackState(std::vector<uint64_t>
+                {
+                    0xffffffff'87654321, 0x00000000'12345678,
+                    0xffffffff'87654321, 0x00000000'12345678,
+                }),
+                StackState(), StackState());
+
+            // stack overflow test
+            VMExecutionContext InitialContext = ExecutionContextInitial_;
+            VMExecutionContext ReturnContext;
+            InitialContext.Stack.SetTopOffset(0); // end of stack
+
+            Test_LoadN_Op<uint32_t>(
+                InitialContext, ReturnContext,
+                std::vector<uint32_t> { },
+                Opcode::T::Dup2, 0, 0, ExceptionState::T::StackOverflow,
+                StackState(true),
+                StackState(), StackState());
+        }
+
+        TEST_METHOD(Inst_Xch)
+        {
+            Test_LoadN_Op<uint32_t>(
+                std::vector<uint32_t> { 0x87654321, 0x12345678 },
+                Opcode::T::Xch, 0, 0, ExceptionState::T::None,
+                StackState(std::vector<uint64_t>
+                {
+                    0x00000000'12345678, 0xffffffff'87654321,
+                }),
+                StackState(), StackState());
+
+            // stack overflow test
+
+            Test_LoadN_Op<uint32_t>(
+                std::vector<uint32_t> { 0x87654321, },
+                Opcode::T::Xch, 0, 0, ExceptionState::T::StackOverflow,
+                StackState(true),
+                StackState(), StackState());
+        }
+
+        //Ldvarp,
+        //Ldargp,
+        //Ldpv_X1,
+        //Ldpv_X2,
+        //Ldpv_X4,
+        //Ldpv_X8,
+        //Stpv_X1,
+        //Stpv_X2,
+        //Stpv_X4,
+        //Stpv_X8,
+        //Ppcpy,
+        //Pvfil_X1,
+        //Pvfil_X2,
+        //Pvfil_X4,
+        //Pvfil_X8,
+        //
+        //Initarg,
+        //Arg,
+        //Var,
+
+        TEST_METHOD(Inst_Dcv)
+        {
+            Test_LoadN_Op<uint32_t>(
+                std::vector<uint32_t> { 0x87654321, 0x12345678 },
+                Opcode::T::Dcv, 0, 0, ExceptionState::T::None,
+                StackState(std::vector<uint64_t> { 0xffffffff'87654321, }),
+                StackState(), StackState());
+
+            Test_LoadN_Op<uint32_t>(
+                std::vector<uint32_t> { 0x87654321, },
+                Opcode::T::Dcv, 0, 0, ExceptionState::T::None,
+                StackState(std::vector<uint64_t> { }),
+                StackState(), StackState());
+
+            // stack overflow test
+
+            Test_LoadN_Op<uint32_t>(
+                std::vector<uint32_t> { },
+                Opcode::T::Dcv, 0, 0, ExceptionState::T::StackOverflow,
+                StackState(true),
+                StackState(), StackState());
+        }
+
+        TEST_METHOD(Inst_Dcvn)
+        {
+            Test_LoadN_Op<uint32_t>(
+                std::vector<uint32_t> { 0x87654321, 0x12345678, 2 },
+                Opcode::T::Dcvn, 0, 0, ExceptionState::T::None,
+                StackState(std::vector<uint64_t> { }),
+                StackState(), StackState());
+
+            Test_LoadN_Op<uint32_t>(
+                std::vector<uint32_t> { 0x87654321, 0x12345678, 1 },
+                Opcode::T::Dcvn, 0, 0, ExceptionState::T::None,
+                StackState(std::vector<uint64_t> { 0xffffffff'87654321, }),
+                StackState(), StackState());
+
+            Test_LoadN_Op<uint32_t>(
+                std::vector<uint32_t> { 0x87654321, 0x12345678, 0 },
+                Opcode::T::Dcvn, 0, 0, ExceptionState::T::None,
+                StackState(std::vector<uint64_t> { 0xffffffff'87654321, 0x00000000'12345678 }),
+                StackState(), StackState());
+
+            // stack overflow test
+
+            Test_LoadN_Op<uint32_t>(
+                std::vector<uint32_t> { 0x87654321, 0x12345678, 3 },
+                Opcode::T::Dcvn, 0, 0, ExceptionState::T::StackOverflow,
+                StackState(true),
+                StackState(), StackState());
+
+            Test_LoadN_Op<uint32_t>(
+                std::vector<uint32_t> { 0x12345678, 2 },
+                Opcode::T::Dcvn, 0, 0, ExceptionState::T::StackOverflow,
+                StackState(true),
+                StackState(), StackState());
+
+            Test_LoadN_Op<uint32_t>(
+                std::vector<uint32_t> { 1 },
+                Opcode::T::Dcvn, 0, 0, ExceptionState::T::StackOverflow,
+                StackState(true),
+                StackState(), StackState());
+
+            Test_LoadN_Op<uint32_t>(
+                std::vector<uint32_t> { },
+                Opcode::T::Dcvn, 0, 0, ExceptionState::T::StackOverflow,
+                StackState(true),
+                StackState(), StackState());
+        }
+
+        TEST_METHOD(Inst_Test_e)
+        {
+            // equal
+            int32_t Expected = 1;
+            Test_LoadImm2_Op<uint32_t>(Opcode::T::Test_e_I4, 0x44332211, 0x44332211, Expected, true);
+            Test_LoadImm2_Op<uint64_t>(Opcode::T::Test_e_I8, 0x88776655'44332211, 0x88776655'44332211, Expected, true);
+            Test_LoadImm2_Op<float>(Opcode::T::Test_e_F4, 123.456f, 123.456f, Expected, true);
+            Test_LoadImm2_Op<double>(Opcode::T::Test_e_F8, 123.456, 123.456, Expected, true);
+
+            // not equal
+            Expected = 0;
+            Test_LoadImm2_Op<uint32_t>(Opcode::T::Test_e_I4, 0x44332211, 0x44332211 + 1, Expected, true);
+            Test_LoadImm2_Op<uint64_t>(Opcode::T::Test_e_I8, 0x88776655'44332211, 0x88776655'44332211 + 1, Expected, true);
+            Test_LoadImm2_Op<float>(Opcode::T::Test_e_F4, 123.456f, 123.456f + 0.00001f, Expected, true);
+            Test_LoadImm2_Op<double>(Opcode::T::Test_e_F8, 123.456, 123.456 + 0.00001, Expected, true);
+
+            // stack overflow
+
+            Test_NoLoad_Op(
+                Opcode::T::Test_e_I4, 0, 0, ExceptionState::T::StackOverflow,
+                StackState(true),
+                StackState(), StackState());
+            Test_NoLoad_Op(
+                Opcode::T::Test_e_I8, 0, 0, ExceptionState::T::StackOverflow,
+                StackState(true),
+                StackState(), StackState());
+            Test_NoLoad_Op(
+                Opcode::T::Test_e_F4, 0, 0, ExceptionState::T::StackOverflow,
+                StackState(true),
+                StackState(), StackState());
+            Test_NoLoad_Op(
+                Opcode::T::Test_e_F8, 0, 0, ExceptionState::T::StackOverflow,
+                StackState(true),
+                StackState(), StackState());
+        }
+
+        TEST_METHOD(Inst_Test_ne)
+        {
+            // equal
+            int32_t Expected = 0;
+            Test_LoadImm2_Op<uint32_t>(Opcode::T::Test_ne_I4, 0x44332211, 0x44332211, Expected, true);
+            Test_LoadImm2_Op<uint64_t>(Opcode::T::Test_ne_I8, 0x88776655'44332211, 0x88776655'44332211, Expected, true);
+            Test_LoadImm2_Op<float>(Opcode::T::Test_ne_F4, 123.456f, 123.456f, Expected, true);
+            Test_LoadImm2_Op<double>(Opcode::T::Test_ne_F8, 123.456, 123.456, Expected, true);
+
+            // not equal
+            Expected = 1;
+            Test_LoadImm2_Op<uint32_t>(Opcode::T::Test_ne_I4, 0x44332211, 0x44332211 + 1, Expected, true);
+            Test_LoadImm2_Op<uint64_t>(Opcode::T::Test_ne_I8, 0x88776655'44332211, 0x88776655'44332211 + 1, Expected, true);
+            Test_LoadImm2_Op<float>(Opcode::T::Test_ne_F4, 123.456f, 123.456f + 0.00001f, Expected, true);
+            Test_LoadImm2_Op<double>(Opcode::T::Test_ne_F8, 123.456, 123.456 + 0.00001, Expected, true);
+
+
+            // stack overflow
+
+            Test_NoLoad_Op(
+                Opcode::T::Test_ne_I4, 0, 0, ExceptionState::T::StackOverflow,
+                StackState(true),
+                StackState(), StackState());
+            Test_NoLoad_Op(
+                Opcode::T::Test_ne_I8, 0, 0, ExceptionState::T::StackOverflow,
+                StackState(true),
+                StackState(), StackState());
+            Test_NoLoad_Op(
+                Opcode::T::Test_ne_F4, 0, 0, ExceptionState::T::StackOverflow,
+                StackState(true),
+                StackState(), StackState());
+            Test_NoLoad_Op(
+                Opcode::T::Test_ne_F8, 0, 0, ExceptionState::T::StackOverflow,
+                StackState(true),
+                StackState(), StackState());
+        }
+
+        TEST_METHOD(Inst_Test_le)
+        {
+            // equal
+            int32_t Expected = 1;
+            Test_LoadImm2_Op<uint32_t>(Opcode::T::Test_le_I4, 0x44332211, 0x44332211, Expected, true);
+            Test_LoadImm2_Op<uint64_t>(Opcode::T::Test_le_I8, 0x88776655'44332211, 0x88776655'44332211, Expected, true);
+            Test_LoadImm2_Op<float>(Opcode::T::Test_le_F4, 123.456f, 123.456f, Expected, true);
+            Test_LoadImm2_Op<double>(Opcode::T::Test_le_F8, 123.456, 123.456, Expected, true);
+
+            // less
+            Expected = 1;
+            Test_LoadImm2_Op<uint32_t>(Opcode::T::Test_le_I4, 0x44332211, 0x44332211 + 1, Expected, true);
+            Test_LoadImm2_Op<uint64_t>(Opcode::T::Test_le_I8, 0x88776655'44332211, 0x88776655'44332211 + 1, Expected, true);
+            Test_LoadImm2_Op<float>(Opcode::T::Test_le_F4, 123.456f, 123.456f + 0.00001f, Expected, true);
+            Test_LoadImm2_Op<double>(Opcode::T::Test_le_F8, 123.456, 123.456 + 0.00001, Expected, true);
+
+            // neither less nor equal
+            Expected = 0;
+            Test_LoadImm2_Op<uint32_t>(Opcode::T::Test_le_I4, 0x44332211, 0x44332211 - 1, Expected, true);
+            Test_LoadImm2_Op<uint64_t>(Opcode::T::Test_le_I8, 0x88776655'44332211, 0x88776655'44332211 - 1, Expected, true);
+            Test_LoadImm2_Op<float>(Opcode::T::Test_le_F4, 123.456f, 123.456f - 0.00001f, Expected, true);
+            Test_LoadImm2_Op<double>(Opcode::T::Test_le_F8, 123.456, 123.456 - 0.00001, Expected, true);
+
+            // stack overflow
+
+            Test_NoLoad_Op(
+                Opcode::T::Test_le_I4, 0, 0, ExceptionState::T::StackOverflow,
+                StackState(true),
+                StackState(), StackState());
+            Test_NoLoad_Op(
+                Opcode::T::Test_le_I8, 0, 0, ExceptionState::T::StackOverflow,
+                StackState(true),
+                StackState(), StackState());
+            Test_NoLoad_Op(
+                Opcode::T::Test_le_F4, 0, 0, ExceptionState::T::StackOverflow,
+                StackState(true),
+                StackState(), StackState());
+            Test_NoLoad_Op(
+                Opcode::T::Test_le_F8, 0, 0, ExceptionState::T::StackOverflow,
+                StackState(true),
+                StackState(), StackState());
+        }
+
+        TEST_METHOD(Inst_Test_ge)
+        {
+            // equal
+            int32_t Expected = 1;
+            Test_LoadImm2_Op<uint32_t>(Opcode::T::Test_ge_I4, 0x44332211, 0x44332211, Expected, true);
+            Test_LoadImm2_Op<uint64_t>(Opcode::T::Test_ge_I8, 0x88776655'44332211, 0x88776655'44332211, Expected, true);
+            Test_LoadImm2_Op<float>(Opcode::T::Test_ge_F4, 123.456f, 123.456f, Expected, true);
+            Test_LoadImm2_Op<double>(Opcode::T::Test_ge_F8, 123.456, 123.456, Expected, true);
+
+            // greater
+            Expected = 1;
+            Test_LoadImm2_Op<uint32_t>(Opcode::T::Test_ge_I4, 0x44332211, 0x44332211 - 1, Expected, true);
+            Test_LoadImm2_Op<uint64_t>(Opcode::T::Test_ge_I8, 0x88776655'44332211, 0x88776655'44332211 - 1, Expected, true);
+            Test_LoadImm2_Op<float>(Opcode::T::Test_ge_F4, 123.456f, 123.456f - 0.00001f, Expected, true);
+            Test_LoadImm2_Op<double>(Opcode::T::Test_ge_F8, 123.456, 123.456 - 0.00001, Expected, true);
+
+            // neither greater nor equal
+            Expected = 0;
+            Test_LoadImm2_Op<uint32_t>(Opcode::T::Test_ge_I4, 0x44332211, 0x44332211 + 1, Expected, true);
+            Test_LoadImm2_Op<uint64_t>(Opcode::T::Test_ge_I8, 0x88776655'44332211, 0x88776655'44332211 + 1, Expected, true);
+            Test_LoadImm2_Op<float>(Opcode::T::Test_ge_F4, 123.456f, 123.456f + 0.00001f, Expected, true);
+            Test_LoadImm2_Op<double>(Opcode::T::Test_ge_F8, 123.456, 123.456 + 0.00001, Expected, true);
+
+            // stack overflow
+
+            Test_NoLoad_Op(
+                Opcode::T::Test_ge_I4, 0, 0, ExceptionState::T::StackOverflow,
+                StackState(true),
+                StackState(), StackState());
+            Test_NoLoad_Op(
+                Opcode::T::Test_ge_I8, 0, 0, ExceptionState::T::StackOverflow,
+                StackState(true),
+                StackState(), StackState());
+            Test_NoLoad_Op(
+                Opcode::T::Test_ge_F4, 0, 0, ExceptionState::T::StackOverflow,
+                StackState(true),
+                StackState(), StackState());
+            Test_NoLoad_Op(
+                Opcode::T::Test_ge_F8, 0, 0, ExceptionState::T::StackOverflow,
+                StackState(true),
+                StackState(), StackState());
+        }
+
+        TEST_METHOD(Inst_Test_l)
+        {
+            // equal
+            int32_t Expected = 0;
+            Test_LoadImm2_Op<uint32_t>(Opcode::T::Test_l_I4, 0x44332211, 0x44332211, Expected, true);
+            Test_LoadImm2_Op<uint64_t>(Opcode::T::Test_l_I8, 0x88776655'44332211, 0x88776655'44332211, Expected, true);
+            Test_LoadImm2_Op<float>(Opcode::T::Test_l_F4, 123.456f, 123.456f, Expected, true);
+            Test_LoadImm2_Op<double>(Opcode::T::Test_l_F8, 123.456, 123.456, Expected, true);
+
+            // less
+            Expected = 1;
+            Test_LoadImm2_Op<uint32_t>(Opcode::T::Test_l_I4, 0x44332211, 0x44332211 + 1, Expected, true);
+            Test_LoadImm2_Op<uint64_t>(Opcode::T::Test_l_I8, 0x88776655'44332211, 0x88776655'44332211 + 1, Expected, true);
+            Test_LoadImm2_Op<float>(Opcode::T::Test_l_F4, 123.456f, 123.456f + 0.00001f, Expected, true);
+            Test_LoadImm2_Op<double>(Opcode::T::Test_l_F8, 123.456, 123.456 + 0.00001, Expected, true);
+
+            // neither less nor equal
+            Expected = 0;
+            Test_LoadImm2_Op<uint32_t>(Opcode::T::Test_l_I4, 0x44332211, 0x44332211 - 1, Expected, true);
+            Test_LoadImm2_Op<uint64_t>(Opcode::T::Test_l_I8, 0x88776655'44332211, 0x88776655'44332211 - 1, Expected, true);
+            Test_LoadImm2_Op<float>(Opcode::T::Test_l_F4, 123.456f, 123.456f - 0.00001f, Expected, true);
+            Test_LoadImm2_Op<double>(Opcode::T::Test_l_F8, 123.456, 123.456 - 0.00001, Expected, true);
+
+            // stack overflow
+
+            Test_NoLoad_Op(
+                Opcode::T::Test_l_I4, 0, 0, ExceptionState::T::StackOverflow,
+                StackState(true),
+                StackState(), StackState());
+            Test_NoLoad_Op(
+                Opcode::T::Test_l_I8, 0, 0, ExceptionState::T::StackOverflow,
+                StackState(true),
+                StackState(), StackState());
+            Test_NoLoad_Op(
+                Opcode::T::Test_l_F4, 0, 0, ExceptionState::T::StackOverflow,
+                StackState(true),
+                StackState(), StackState());
+            Test_NoLoad_Op(
+                Opcode::T::Test_l_F8, 0, 0, ExceptionState::T::StackOverflow,
+                StackState(true),
+                StackState(), StackState());
+        }
+
+        TEST_METHOD(Inst_Test_g)
+        {
+            // equal
+            int32_t Expected = 0;
+            Test_LoadImm2_Op<uint32_t>(Opcode::T::Test_g_I4, 0x44332211, 0x44332211, Expected, true);
+            Test_LoadImm2_Op<uint64_t>(Opcode::T::Test_g_I8, 0x88776655'44332211, 0x88776655'44332211, Expected, true);
+            Test_LoadImm2_Op<float>(Opcode::T::Test_g_F4, 123.456f, 123.456f, Expected, true);
+            Test_LoadImm2_Op<double>(Opcode::T::Test_g_F8, 123.456, 123.456, Expected, true);
+
+            // greater
+            Expected = 1;
+            Test_LoadImm2_Op<uint32_t>(Opcode::T::Test_g_I4, 0x44332211, 0x44332211 - 1, Expected, true);
+            Test_LoadImm2_Op<uint64_t>(Opcode::T::Test_g_I8, 0x88776655'44332211, 0x88776655'44332211 - 1, Expected, true);
+            Test_LoadImm2_Op<float>(Opcode::T::Test_g_F4, 123.456f, 123.456f - 0.00001f, Expected, true);
+            Test_LoadImm2_Op<double>(Opcode::T::Test_g_F8, 123.456, 123.456 - 0.00001, Expected, true);
+
+            // neither greater nor equal
+            Expected = 0;
+            Test_LoadImm2_Op<uint32_t>(Opcode::T::Test_g_I4, 0x44332211, 0x44332211 + 1, Expected, true);
+            Test_LoadImm2_Op<uint64_t>(Opcode::T::Test_g_I8, 0x88776655'44332211, 0x88776655'44332211 + 1, Expected, true);
+            Test_LoadImm2_Op<float>(Opcode::T::Test_g_F4, 123.456f, 123.456f + 0.00001f, Expected, true);
+            Test_LoadImm2_Op<double>(Opcode::T::Test_g_F8, 123.456, 123.456 + 0.00001, Expected, true);
+
+            // stack overflow
+
+            Test_NoLoad_Op(
+                Opcode::T::Test_g_I4, 0, 0, ExceptionState::T::StackOverflow,
+                StackState(true),
+                StackState(), StackState());
+            Test_NoLoad_Op(
+                Opcode::T::Test_g_I8, 0, 0, ExceptionState::T::StackOverflow,
+                StackState(true),
+                StackState(), StackState());
+            Test_NoLoad_Op(
+                Opcode::T::Test_g_F4, 0, 0, ExceptionState::T::StackOverflow,
+                StackState(true),
+                StackState(), StackState());
+            Test_NoLoad_Op(
+                Opcode::T::Test_g_F8, 0, 0, ExceptionState::T::StackOverflow,
+                StackState(true),
+                StackState(), StackState());
         }
 
     private:
