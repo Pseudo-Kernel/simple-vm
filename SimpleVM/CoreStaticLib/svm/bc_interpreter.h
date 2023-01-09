@@ -103,6 +103,8 @@ namespace VM_NAMESPACE
                 return 0;
             }
 
+            MemoryInfo QueryResult{};
+
             do
             {
                 if (StepCount >= Count)
@@ -111,10 +113,18 @@ namespace VM_NAMESPACE
                 if (Context.ExceptionState != ExceptionState::T::None)
                     break;
 
+                if (!MemoryManager_.Query(Context.IP, QueryResult))
+                {
+                    RaiseException(Context, ExceptionState::T::InvalidAccess);
+                    break;
+                }
+
+                uint64_t RemainingSize = QueryResult.Size - (static_cast<uint64_t>(Context.IP) - QueryResult.Base);
+
                 uintptr_t FetchAddress = MemoryManager_.HostAddress(Context.IP);
                 FetchSize = VMInstruction::Decode(
                     reinterpret_cast<uint8_t*>(FetchAddress),
-                    VMInstruction::InstructionMaximumSize,
+                    RemainingSize,
                     &Op);
 
                 if (!FetchSize)
