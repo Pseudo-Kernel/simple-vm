@@ -1163,7 +1163,7 @@ namespace CoreUnitTest
             return VerifyStackHelper(Stack, Rest...);
         }
 
-        void DoSingleTest_New(
+        void Test_OpN(
             const VMExecutionContext& InitialContext, VMExecutionContext& ResultContext,
             std::vector<EmitInfo> EmitOp, uint32_t ExpectedOutputResultSize, ExceptionState::T ExpectedExceptionState,
             StackState ExpectedStackState, StackState ExpectedArgumentStackState,
@@ -1228,7 +1228,11 @@ namespace CoreUnitTest
             VMBytecodeInterpreter Interpreter(*Memory_.get());
             int ExecStepCount = Interpreter.Execute(Context, TotalEmitCount);
 
-            Assert::AreEqual(ExecStepCount, ExpectedStepCount, L"instruction end unreachable");
+            if (ExpectedExceptionState == ExceptionState::T::None)
+            {
+                Assert::AreEqual(ExecStepCount, ExpectedStepCount, L"instruction end unreachable");
+            }
+
             Assert::AreEqual<size_t>(Context.IP, PrevIP + ExpectedIPOffset, L"IP mismatch");
             Assert::AreEqual<uint32_t>(Context.ExceptionState, ExpectedExceptionState, L"exception state mismatch");
 
@@ -1317,6 +1321,16 @@ namespace CoreUnitTest
             ResultContext = Context;
         }
 
+        void Test_OpN(
+            std::vector<EmitInfo> EmitOp, uint32_t ExpectedOutputResultSize, ExceptionState::T ExpectedExceptionState,
+            StackState ExpectedStackState, StackState ExpectedArgumentStackState,
+            StackState ExpectedLocalVarStackState)
+        {
+            Test_OpN(ExecutionContextInitial_, ExecutionContext_,
+                EmitOp, ExpectedOutputResultSize, ExpectedExceptionState,
+                ExpectedStackState, ExpectedArgumentStackState, ExpectedLocalVarStackState);
+        }
+
 
         template <
             typename T,
@@ -1356,7 +1370,7 @@ namespace CoreUnitTest
             EmitInfos.push_back(
                 EmitInfo(ExpectedExceptionState != ExceptionState::T::None, TestOp, Operand1));
 
-            DoSingleTest_New(InitialContext, ResultContext, EmitInfos, ExpectedOutputResultSize,
+            Test_OpN(InitialContext, ResultContext, EmitInfos, ExpectedOutputResultSize,
                 ExpectedExceptionState, ExpectedStackState, ExpectedArgumentStackState, ExpectedLocalVarStackState);
         }
 
@@ -1531,6 +1545,26 @@ namespace CoreUnitTest
 
         template <
             typename T,
+            typename = std::enable_if_t<std::is_integral<T>::value || std::is_floating_point<T>::value>>
+            void Test_NoLoad_Op_Multiple(
+                std::vector<Opcode::T> TestOpList, T OperandValue1, uint32_t ExpectedOutputResultSize,
+                ExceptionState::T ExpectedExceptionState,
+                StackState ExpectedStackState, StackState ExpectedArgumentStackState,
+                StackState ExpectedLocalVarStackState)
+        {
+            for (auto TestOp : TestOpList)
+            {
+                Test_NoLoad_Op(
+                    TestOp, OperandValue1, ExpectedOutputResultSize,
+                    ExpectedExceptionState,
+                    ExpectedStackState, // stack
+                    ExpectedArgumentStackState, // argument stack
+                    ExpectedLocalVarStackState); // localvar stack
+            }
+        }
+
+        template <
+            typename T,
             typename U = T,
             typename = std::enable_if_t<std::is_integral<T>::value || std::is_floating_point<T>::value>,
             typename = std::enable_if_t<std::is_integral<U>::value || std::is_floating_point<U>::value>>
@@ -1554,45 +1588,94 @@ namespace CoreUnitTest
         {
             Test_LoadImm2_Op<uint32_t>(Opcode::T::Add_I4, 0x11223344, 0x44332211, 0x55555555, true);
             Test_LoadImm2_Op<uint32_t>(Opcode::T::Add_U4, 0x11223344, 0x44332211, 0x55555555, false);
-
             Test_LoadImm2_Op<uint64_t>(Opcode::T::Add_I8, 0x11223344'55443322, 0x44332211'22334455, 0x55555555'77777777, true);
             Test_LoadImm2_Op<uint64_t>(Opcode::T::Add_U8, 0x11223344'55443322, 0x44332211'22334455, 0x55555555'77777777, false);
-
             Test_LoadImm2_Op<float>(Opcode::T::Add_F4, 123.456f, 654.321f, 123.456f + 654.321f, true);
             Test_LoadImm2_Op<double>(Opcode::T::Add_F8, 123.456, 654.321, 123.456 + 654.321, true);
+
+            // stack overflow test
+            std::vector<Opcode::T> TestOpList
+            {
+                Opcode::T::Add_I4, 
+                Opcode::T::Add_U4, 
+                Opcode::T::Add_I8,
+                Opcode::T::Add_U8, 
+                Opcode::T::Add_F4, 
+                Opcode::T::Add_F8,
+            };
+            Test_NoLoad_Op_Multiple(
+                TestOpList, 0, 0, ExceptionState::T::StackOverflow,
+                StackState(true),
+                StackState(), StackState());
         }
 
         TEST_METHOD(Inst_Sub)
         {
             Test_LoadImm2_Op<uint32_t>(Opcode::T::Sub_I4, 0x11223344, 0x44332211, 0xccef1133, true);
             Test_LoadImm2_Op<uint32_t>(Opcode::T::Sub_U4, 0x11223344, 0x44332211, 0xccef1133, false);
-
             Test_LoadImm2_Op<uint64_t>(Opcode::T::Sub_I8, 0x11223344'55443322, 0x44332211'22334455, 0xccef1133'3310eecd, true);
             Test_LoadImm2_Op<uint64_t>(Opcode::T::Sub_U8, 0x11223344'55443322, 0x44332211'22334455, 0xccef1133'3310eecd, false);
-
             Test_LoadImm2_Op<float>(Opcode::T::Sub_F4, 123.456f, 654.321f, 123.456f - 654.321f, true);
             Test_LoadImm2_Op<double>(Opcode::T::Sub_F8, 123.456, 654.321, 123.456 - 654.321, true);
+
+            std::vector<Opcode::T> TestOpList
+            {
+                Opcode::T::Sub_I4, 
+                Opcode::T::Sub_U4, 
+                Opcode::T::Sub_I8,
+                Opcode::T::Sub_U8, 
+                Opcode::T::Sub_F4, 
+                Opcode::T::Sub_F8,
+            };
+            Test_NoLoad_Op_Multiple(
+                TestOpList, 0, 0, ExceptionState::T::StackOverflow,
+                StackState(true),
+                StackState(), StackState());
         }
 
         TEST_METHOD(Inst_Mul)
         {
             Test_LoadImm2_Op<uint32_t>(Opcode::T::Mul_I4, 0x1122, 0x3344, 0x36e5308, true);
             Test_LoadImm2_Op<uint32_t>(Opcode::T::Mul_U4, 0x1122, 0x3344, 0x36e5308, false);
-
             Test_LoadImm2_Op<uint64_t>(Opcode::T::Mul_I8, 0x11223344, 0x55667788, 0x5b736a6'0117d820, true);
             Test_LoadImm2_Op<uint64_t>(Opcode::T::Mul_U8, 0x11223344, 0x55667788, 0x5b736a6'0117d820, false);
-
             Test_LoadImm2_Op<float>(Opcode::T::Mul_F4, 123.456f, 654.321f, 123.456f * 654.321f, true);
             Test_LoadImm2_Op<double>(Opcode::T::Mul_F8, 123.456, 654.321, 123.456 * 654.321, true);
+
+            // stack overflow test
+            std::vector<Opcode::T> TestOpList
+            {
+                Opcode::T::Mul_I4, 
+                Opcode::T::Mul_U4, 
+                Opcode::T::Mul_I8,
+                Opcode::T::Mul_U8, 
+                Opcode::T::Mul_F4, 
+                Opcode::T::Mul_F8,
+            };
+            Test_NoLoad_Op_Multiple(
+                TestOpList, 0, 0, ExceptionState::T::StackOverflow,
+                StackState(true),
+                StackState(), StackState());
         }
 
         TEST_METHOD(Inst_Mulh)
         {
             Test_LoadImm2_Op<uint32_t>(Opcode::T::Mulh_I4, 0x11223344, 0x55667788, 0x5b736a6, true);
             Test_LoadImm2_Op<uint32_t>(Opcode::T::Mulh_U4, 0x11223344, 0x55667788, 0x5b736a6, false);
-
             Test_LoadImm2_Op<uint64_t>(Opcode::T::Mulh_I8, 0x11223344'44332211, 0x44332211'11223344, 0x49081b6'07f13334, true);
             Test_LoadImm2_Op<uint64_t>(Opcode::T::Mulh_U8, 0x11223344'44332211, 0x44332211'11223344, 0x49081b6'07f13334, false);
+
+            std::vector<Opcode::T> TestOpList
+            {
+                Opcode::T::Mulh_I4, 
+                Opcode::T::Mulh_U4, 
+                Opcode::T::Mulh_I8,
+                Opcode::T::Mulh_U8, 
+            };
+            Test_NoLoad_Op_Multiple(
+                TestOpList, 0, 0, ExceptionState::T::StackOverflow,
+                StackState(true),
+                StackState(), StackState());
         }
 
         TEST_METHOD(Inst_Div)
@@ -1602,7 +1685,6 @@ namespace CoreUnitTest
             Test_LoadImm2_Op_Exception<uint32_t>(Opcode::Div_I4, 0x44332211, 0, ExceptionState::T::IntegerDivideByZero);
             Test_LoadImm2_Op_Exception<uint32_t>(Opcode::Div_U4, 0x44332211, 0, ExceptionState::T::IntegerDivideByZero);
 
-
             Test_LoadImm2_Op<uint64_t>(Opcode::T::Div_I8, 0x44332211'11223344, 0x11223344'44332211, 3, true);
             Test_LoadImm2_Op<uint64_t>(Opcode::T::Div_U8, 0x44332211'11223344, 0x11223344'44332211, 3, false);
             Test_LoadImm2_Op_Exception<uint64_t>(Opcode::Div_I8, 0x44332211'11223344, 0, ExceptionState::T::IntegerDivideByZero);
@@ -1610,6 +1692,21 @@ namespace CoreUnitTest
 
             Test_LoadImm2_Op(Opcode::T::Div_F4, 123.456f, 654.321f, 123.456f / 654.321f, false);
             Test_LoadImm2_Op(Opcode::T::Div_F8, 123.456, 654.321, 123.456 / 654.321, false);
+
+            // stack overflow test
+            std::vector<Opcode::T> TestOpList
+            {
+                Opcode::T::Div_I4,
+                Opcode::T::Div_U4,
+                Opcode::T::Div_I8,
+                Opcode::T::Div_U8,
+                Opcode::T::Div_F4,
+                Opcode::T::Div_F8,
+            };
+            Test_NoLoad_Op_Multiple(
+                TestOpList, 0, 0, ExceptionState::T::StackOverflow,
+                StackState(true),
+                StackState(), StackState());
         }
 
         TEST_METHOD(Inst_Mod)
@@ -1619,7 +1716,6 @@ namespace CoreUnitTest
             Test_LoadImm2_Op_Exception<uint32_t>(Opcode::Mod_I4, 0x44332211, 0, ExceptionState::T::IntegerDivideByZero);
             Test_LoadImm2_Op_Exception<uint32_t>(Opcode::Mod_U4, 0x44332211, 0, ExceptionState::T::IntegerDivideByZero);
 
-
             Test_LoadImm2_Op<uint64_t>(Opcode::T::Mod_I8, 0x44332211'11223344, 0x11223344'44332211, 0x10cc8844'4488cd11, true);
             Test_LoadImm2_Op<uint64_t>(Opcode::T::Mod_U8, 0x44332211'11223344, 0x11223344'44332211, 0x10cc8844'4488cd11, false);
             Test_LoadImm2_Op_Exception<uint64_t>(Opcode::Mod_I8, 0x44332211'11223344, 0, ExceptionState::T::IntegerDivideByZero);
@@ -1627,90 +1723,232 @@ namespace CoreUnitTest
 
             Test_LoadImm2_Op<float>(Opcode::T::Mod_F4, 654.321f, 123.456f, std::fmod(654.321f, 123.456f), true);
             Test_LoadImm2_Op<double>(Opcode::T::Mod_F8, 654.321, 123.456, std::fmod(654.321, 123.456), true);
+
+            // stack overflow test
+            std::vector<Opcode::T> TestOpList
+            {
+                Opcode::T::Mod_I4,
+                Opcode::T::Mod_U4,
+                Opcode::T::Mod_I8,
+                Opcode::T::Mod_U8,
+                Opcode::T::Mod_F4,
+                Opcode::T::Mod_F8,
+            };
+            Test_NoLoad_Op_Multiple(
+                TestOpList, 0, 0, ExceptionState::T::StackOverflow,
+                StackState(true),
+                StackState(), StackState());
         }
 
         TEST_METHOD(Inst_Shl)
         {
             Test_LoadImm2_Op<uint32_t>(Opcode::T::Shl_I4, 0x44332211, 16, 0x22110000, true);
             Test_LoadImm2_Op<uint32_t>(Opcode::T::Shl_U4, 0x44332211, 16, 0x22110000, false);
-
             Test_LoadImm2_Op<uint64_t>(Opcode::T::Shl_I8, 0x44332211'11223344, 32, 0x11223344'00000000, true);
             Test_LoadImm2_Op<uint64_t>(Opcode::T::Shl_U8, 0x44332211'11223344, 32, 0x11223344'00000000, false);
+
+            // stack overflow test
+            std::vector<Opcode::T> TestOpList
+            {
+                Opcode::T::Shl_I4,
+                Opcode::T::Shl_U4,
+                Opcode::T::Shl_I8,
+                Opcode::T::Shl_U8,
+            };
+            Test_NoLoad_Op_Multiple(
+                TestOpList, 0, 0, ExceptionState::T::StackOverflow,
+                StackState(true),
+                StackState(), StackState());
         }
 
         TEST_METHOD(Inst_Shr)
         {
             Test_LoadImm2_Op<uint32_t>(Opcode::T::Shr_I4, 0x44332211, 16, 0x4433, true);
             Test_LoadImm2_Op<uint32_t>(Opcode::T::Shr_U4, 0x44332211, 16, 0x4433, false);
-
             Test_LoadImm2_Op<uint64_t>(Opcode::T::Shr_I8, 0x44332211'11223344, 32, 0x44332211, true);
             Test_LoadImm2_Op<uint64_t>(Opcode::T::Shr_U8, 0x44332211'11223344, 32, 0x44332211, false);
+
+            // stack overflow test
+            std::vector<Opcode::T> TestOpList
+            {
+                Opcode::T::Shr_I4,
+                Opcode::T::Shr_U4,
+                Opcode::T::Shr_I8,
+                Opcode::T::Shr_U8,
+            };
+            Test_NoLoad_Op_Multiple(
+                TestOpList, 0, 0, ExceptionState::T::StackOverflow,
+                StackState(true),
+                StackState(), StackState());
         }
 
         TEST_METHOD(Inst_And)
         {
             Test_LoadImm2_Op<uint32_t>(Opcode::T::And_X4, 0x44332211, 0xff00ff00, 0x44002200, false);
             Test_LoadImm2_Op<uint64_t>(Opcode::T::And_X8, 0x44332211'11223344, 0xff00ff00'ff00ff00, 0x44002200'11003300, false);
+
+            // stack overflow test
+            std::vector<Opcode::T> TestOpList
+            {
+                Opcode::T::And_X4,
+                Opcode::T::And_X8,
+            };
+            Test_NoLoad_Op_Multiple(
+                TestOpList, 0, 0, ExceptionState::T::StackOverflow,
+                StackState(true),
+                StackState(), StackState());
         }
 
         TEST_METHOD(Inst_Or)
         {
             Test_LoadImm2_Op<uint32_t>(Opcode::T::Or_X4, 0x44002200, 0x00330011, 0x44332211, false);
             Test_LoadImm2_Op<uint64_t>(Opcode::T::Or_X8, 0x44002200'11003300, 0x00330011'00220044, 0x44332211'11223344, false);
+
+            // stack overflow test
+            std::vector<Opcode::T> TestOpList
+            {
+                Opcode::T::Or_X4,
+                Opcode::T::Or_X8,
+            };
+            Test_NoLoad_Op_Multiple(
+                TestOpList, 0, 0, ExceptionState::T::StackOverflow,
+                StackState(true),
+                StackState(), StackState());
         }
 
         TEST_METHOD(Inst_Xor)
         {
             Test_LoadImm2_Op<uint32_t>(Opcode::T::Xor_X4, 0x44332211, 0xff00ff00, 0xbb33dd11, false);
             Test_LoadImm2_Op<uint64_t>(Opcode::T::Xor_X8, 0x44332211'11223344, 0xff00ff00'ff00ff00, 0xbb33dd11ee22cc44, false);
+
+            // stack overflow test
+            std::vector<Opcode::T> TestOpList
+            {
+                Opcode::T::Xor_X4,
+                Opcode::T::Xor_X8,
+            };
+            Test_NoLoad_Op_Multiple(
+                TestOpList, 0, 0, ExceptionState::T::StackOverflow,
+                StackState(true),
+                StackState(), StackState());
         }
 
         TEST_METHOD(Inst_Not)
         {
             Test_LoadImm1_Op<uint32_t>(Opcode::T::Not_X4, 0x44332211, ~0x44332211, false);
             Test_LoadImm1_Op<uint64_t>(Opcode::T::Not_X8, 0x44332211'11223344, ~0x44332211'11223344, false);
+
+            // stack overflow test
+            std::vector<Opcode::T> TestOpList
+            {
+                Opcode::T::Not_X4,
+                Opcode::T::Not_X8,
+            };
+            Test_NoLoad_Op_Multiple(
+                TestOpList, 0, 0, ExceptionState::T::StackOverflow,
+                StackState(true),
+                StackState(), StackState());
         }
 
         TEST_METHOD(Inst_Neg)
         {
             Test_LoadImm1_Op<uint32_t>(Opcode::T::Neg_I4, 0x44332211, ~0x44332211 + 1, true);
             Test_LoadImm1_Op<uint64_t>(Opcode::T::Neg_I8, 0x44332211'11223344, ~0x44332211'11223344 + 1, true);
-
             Test_LoadImm1_Op<float>(Opcode::T::Neg_F4, 123.456f, -123.456f, true);
             Test_LoadImm1_Op<double>(Opcode::T::Neg_F8, 123.456, -123.456, true);
+
+            // stack overflow test
+            std::vector<Opcode::T> TestOpList
+            {
+                Opcode::T::Neg_I4,
+                Opcode::T::Neg_I8,
+                Opcode::T::Neg_F4,
+                Opcode::T::Neg_F8,
+            };
+            Test_NoLoad_Op_Multiple(
+                TestOpList, 0, 0, ExceptionState::T::StackOverflow,
+                StackState(true),
+                StackState(), StackState());
         }
 
         TEST_METHOD(Inst_Abs)
         {
             Test_LoadImm1_Op<uint32_t>(Opcode::T::Abs_I4, ~0x44332211 + 1, 0x44332211, true);
             Test_LoadImm1_Op<uint64_t>(Opcode::T::Abs_I8, ~0x44332211'11223344 + 1, 0x44332211'11223344, true);
-
             Test_LoadImm1_Op<float>(Opcode::T::Abs_F4, -123.456f, 123.456f, true);
             Test_LoadImm1_Op<double>(Opcode::T::Abs_F8, -123.456, 123.456, true);
+
+            // stack overflow test
+            std::vector<Opcode::T> TestOpList
+            {
+                Opcode::T::Abs_I4,
+                Opcode::T::Abs_I8,
+                Opcode::T::Abs_F4,
+                Opcode::T::Abs_F8,
+            };
+            Test_NoLoad_Op_Multiple(
+                TestOpList, 0, 0, ExceptionState::T::StackOverflow,
+                StackState(true),
+                StackState(), StackState());
         }
 
         TEST_METHOD(Inst_Cvt2i)
         {
             Test_LoadImm1_Op<float, uint32_t>(Opcode::T::Cvt2i_F4_I4, 123.45f, 123, true);
             Test_LoadImm1_Op<float, uint64_t>(Opcode::T::Cvt2i_F4_I8, 123.45f, 123, true);
-
             Test_LoadImm1_Op<double, uint32_t>(Opcode::T::Cvt2i_F8_I4, 123.45, 123, true);
             Test_LoadImm1_Op<double, uint64_t>(Opcode::T::Cvt2i_F8_I8, 123.45, 123, true);
+
+            // stack overflow test
+            std::vector<Opcode::T> TestOpList
+            {
+                Opcode::T::Cvt2i_F4_I4,
+                Opcode::T::Cvt2i_F4_I8,
+                Opcode::T::Cvt2i_F8_I4,
+                Opcode::T::Cvt2i_F8_I8,
+            };
+            Test_NoLoad_Op_Multiple(
+                TestOpList, 0, 0, ExceptionState::T::StackOverflow,
+                StackState(true),
+                StackState(), StackState());
         }
 
         TEST_METHOD(Inst_Cvt2f)
         {
             Test_LoadImm1_Op<uint32_t, float>(Opcode::T::Cvt2f_I4_F4, 123, 123.f, true);
             Test_LoadImm1_Op<uint32_t, double>(Opcode::T::Cvt2f_I4_F8, 123, 123.0, true);
-
             Test_LoadImm1_Op<uint64_t, float>(Opcode::T::Cvt2f_I8_F4, 123, 123.f, true);
             Test_LoadImm1_Op<uint64_t, double>(Opcode::T::Cvt2f_I8_F8, 123, 123.0, true);
+
+            // stack overflow test
+            std::vector<Opcode::T> TestOpList
+            {
+                Opcode::T::Cvt2f_I4_F4,
+                Opcode::T::Cvt2f_I4_F8,
+                Opcode::T::Cvt2f_I8_F4,
+                Opcode::T::Cvt2f_I8_F8,
+            };
+            Test_NoLoad_Op_Multiple(
+                TestOpList, 0, 0, ExceptionState::T::StackOverflow,
+                StackState(true),
+                StackState(), StackState());
         }
 
         TEST_METHOD(Inst_Cvtff)
         {
             Test_LoadImm1_Op<float, double>(Opcode::T::Cvtff_F4_F8, 123.f, 123.0, true);
             Test_LoadImm1_Op<double, float>(Opcode::T::Cvtff_F8_F4, 123.0, 123.f, true);
+
+            // stack overflow test
+            std::vector<Opcode::T> TestOpList
+            {
+                Opcode::T::Cvtff_F4_F8,
+                Opcode::T::Cvtff_F8_F4,
+            };
+            Test_NoLoad_Op_Multiple(
+                TestOpList, 0, 0, ExceptionState::T::StackOverflow,
+                StackState(true),
+                StackState(), StackState());
         }
 
         TEST_METHOD(Inst_Cvt)
@@ -1738,6 +1976,36 @@ namespace CoreUnitTest
             Test_LoadImm1_Op<uint16_t, uint16_t>(Opcode::T::Cvt_U2_I2, 0x8001, 0x8001, true);
             Test_LoadImm1_Op<uint32_t, uint32_t>(Opcode::T::Cvt_U4_I4, 0x80000001, 0x80000001, true);
             Test_LoadImm1_Op<uint64_t, uint64_t>(Opcode::T::Cvt_U8_I8, 0x80000000'00000001, 0x80000000'00000001, true);
+
+
+            // stack overflow test
+            std::vector<Opcode::T> TestOpList
+            {
+                Opcode::T::Cvt_I1_I4,
+                Opcode::T::Cvt_I2_I4,
+                Opcode::T::Cvt_I4_I1,
+                Opcode::T::Cvt_I4_I2,
+                Opcode::T::Cvt_I4_I8,
+                Opcode::T::Cvt_I8_I4,
+                Opcode::T::Cvt_U1_U4,
+                Opcode::T::Cvt_U2_U4,
+                Opcode::T::Cvt_U4_U1,
+                Opcode::T::Cvt_U4_U2,
+                Opcode::T::Cvt_U4_U8,
+                Opcode::T::Cvt_U8_U4,
+                Opcode::T::Cvt_I1_U1,
+                Opcode::T::Cvt_I2_U2,
+                Opcode::T::Cvt_I4_U4,
+                Opcode::T::Cvt_I8_U8,
+                Opcode::T::Cvt_U1_I1,
+                Opcode::T::Cvt_U2_I2,
+                Opcode::T::Cvt_U4_I4,
+                Opcode::T::Cvt_U8_I8,
+            };
+            Test_NoLoad_Op_Multiple(
+                TestOpList, 0, 0, ExceptionState::T::StackOverflow,
+                StackState(true),
+                StackState(), StackState());
         }
 
         TEST_METHOD(Inst_Ldimm)
@@ -1969,22 +2237,16 @@ namespace CoreUnitTest
             Test_LoadImm2_Op<float>(Opcode::T::Test_e_F4, 123.456f, 123.456f + 0.00001f, Expected, true);
             Test_LoadImm2_Op<double>(Opcode::T::Test_e_F8, 123.456, 123.456 + 0.00001, Expected, true);
 
-            // stack overflow
-
-            Test_NoLoad_Op(
-                Opcode::T::Test_e_I4, 0, 0, ExceptionState::T::StackOverflow,
-                StackState(true),
-                StackState(), StackState());
-            Test_NoLoad_Op(
-                Opcode::T::Test_e_I8, 0, 0, ExceptionState::T::StackOverflow,
-                StackState(true),
-                StackState(), StackState());
-            Test_NoLoad_Op(
-                Opcode::T::Test_e_F4, 0, 0, ExceptionState::T::StackOverflow,
-                StackState(true),
-                StackState(), StackState());
-            Test_NoLoad_Op(
-                Opcode::T::Test_e_F8, 0, 0, ExceptionState::T::StackOverflow,
+            // stack overflow test
+            std::vector<Opcode::T> TestOpList
+            {
+                Opcode::T::Test_e_I4,
+                Opcode::T::Test_e_I8,
+                Opcode::T::Test_e_F4,
+                Opcode::T::Test_e_F8,
+            };
+            Test_NoLoad_Op_Multiple(
+                TestOpList, 0, 0, ExceptionState::T::StackOverflow,
                 StackState(true),
                 StackState(), StackState());
         }
@@ -2006,22 +2268,16 @@ namespace CoreUnitTest
             Test_LoadImm2_Op<double>(Opcode::T::Test_ne_F8, 123.456, 123.456 + 0.00001, Expected, true);
 
 
-            // stack overflow
-
-            Test_NoLoad_Op(
-                Opcode::T::Test_ne_I4, 0, 0, ExceptionState::T::StackOverflow,
-                StackState(true),
-                StackState(), StackState());
-            Test_NoLoad_Op(
-                Opcode::T::Test_ne_I8, 0, 0, ExceptionState::T::StackOverflow,
-                StackState(true),
-                StackState(), StackState());
-            Test_NoLoad_Op(
-                Opcode::T::Test_ne_F4, 0, 0, ExceptionState::T::StackOverflow,
-                StackState(true),
-                StackState(), StackState());
-            Test_NoLoad_Op(
-                Opcode::T::Test_ne_F8, 0, 0, ExceptionState::T::StackOverflow,
+            // stack overflow test
+            std::vector<Opcode::T> TestOpList
+            {
+                Opcode::T::Test_ne_I4,
+                Opcode::T::Test_ne_I8,
+                Opcode::T::Test_ne_F4,
+                Opcode::T::Test_ne_F8,
+            };
+            Test_NoLoad_Op_Multiple(
+                TestOpList, 0, 0, ExceptionState::T::StackOverflow,
                 StackState(true),
                 StackState(), StackState());
         }
@@ -2049,22 +2305,16 @@ namespace CoreUnitTest
             Test_LoadImm2_Op<float>(Opcode::T::Test_le_F4, 123.456f, 123.456f - 0.00001f, Expected, true);
             Test_LoadImm2_Op<double>(Opcode::T::Test_le_F8, 123.456, 123.456 - 0.00001, Expected, true);
 
-            // stack overflow
-
-            Test_NoLoad_Op(
-                Opcode::T::Test_le_I4, 0, 0, ExceptionState::T::StackOverflow,
-                StackState(true),
-                StackState(), StackState());
-            Test_NoLoad_Op(
-                Opcode::T::Test_le_I8, 0, 0, ExceptionState::T::StackOverflow,
-                StackState(true),
-                StackState(), StackState());
-            Test_NoLoad_Op(
-                Opcode::T::Test_le_F4, 0, 0, ExceptionState::T::StackOverflow,
-                StackState(true),
-                StackState(), StackState());
-            Test_NoLoad_Op(
-                Opcode::T::Test_le_F8, 0, 0, ExceptionState::T::StackOverflow,
+            // stack overflow test
+            std::vector<Opcode::T> TestOpList
+            {
+                Opcode::T::Test_le_I4,
+                Opcode::T::Test_le_I8,
+                Opcode::T::Test_le_F4,
+                Opcode::T::Test_le_F8,
+            };
+            Test_NoLoad_Op_Multiple(
+                TestOpList, 0, 0, ExceptionState::T::StackOverflow,
                 StackState(true),
                 StackState(), StackState());
         }
@@ -2092,22 +2342,16 @@ namespace CoreUnitTest
             Test_LoadImm2_Op<float>(Opcode::T::Test_ge_F4, 123.456f, 123.456f + 0.00001f, Expected, true);
             Test_LoadImm2_Op<double>(Opcode::T::Test_ge_F8, 123.456, 123.456 + 0.00001, Expected, true);
 
-            // stack overflow
-
-            Test_NoLoad_Op(
-                Opcode::T::Test_ge_I4, 0, 0, ExceptionState::T::StackOverflow,
-                StackState(true),
-                StackState(), StackState());
-            Test_NoLoad_Op(
-                Opcode::T::Test_ge_I8, 0, 0, ExceptionState::T::StackOverflow,
-                StackState(true),
-                StackState(), StackState());
-            Test_NoLoad_Op(
-                Opcode::T::Test_ge_F4, 0, 0, ExceptionState::T::StackOverflow,
-                StackState(true),
-                StackState(), StackState());
-            Test_NoLoad_Op(
-                Opcode::T::Test_ge_F8, 0, 0, ExceptionState::T::StackOverflow,
+            // stack overflow test
+            std::vector<Opcode::T> TestOpList
+            {
+                Opcode::T::Test_ge_I4,
+                Opcode::T::Test_ge_I8,
+                Opcode::T::Test_ge_F4,
+                Opcode::T::Test_ge_F8,
+            };
+            Test_NoLoad_Op_Multiple(
+                TestOpList, 0, 0, ExceptionState::T::StackOverflow,
                 StackState(true),
                 StackState(), StackState());
         }
@@ -2135,22 +2379,16 @@ namespace CoreUnitTest
             Test_LoadImm2_Op<float>(Opcode::T::Test_l_F4, 123.456f, 123.456f - 0.00001f, Expected, true);
             Test_LoadImm2_Op<double>(Opcode::T::Test_l_F8, 123.456, 123.456 - 0.00001, Expected, true);
 
-            // stack overflow
-
-            Test_NoLoad_Op(
-                Opcode::T::Test_l_I4, 0, 0, ExceptionState::T::StackOverflow,
-                StackState(true),
-                StackState(), StackState());
-            Test_NoLoad_Op(
-                Opcode::T::Test_l_I8, 0, 0, ExceptionState::T::StackOverflow,
-                StackState(true),
-                StackState(), StackState());
-            Test_NoLoad_Op(
-                Opcode::T::Test_l_F4, 0, 0, ExceptionState::T::StackOverflow,
-                StackState(true),
-                StackState(), StackState());
-            Test_NoLoad_Op(
-                Opcode::T::Test_l_F8, 0, 0, ExceptionState::T::StackOverflow,
+            // stack overflow test
+            std::vector<Opcode::T> TestOpList
+            {
+                Opcode::T::Test_l_I4,
+                Opcode::T::Test_l_I8,
+                Opcode::T::Test_l_F4,
+                Opcode::T::Test_l_F8,
+            };
+            Test_NoLoad_Op_Multiple(
+                TestOpList, 0, 0, ExceptionState::T::StackOverflow,
                 StackState(true),
                 StackState(), StackState());
         }
@@ -2178,25 +2416,97 @@ namespace CoreUnitTest
             Test_LoadImm2_Op<float>(Opcode::T::Test_g_F4, 123.456f, 123.456f + 0.00001f, Expected, true);
             Test_LoadImm2_Op<double>(Opcode::T::Test_g_F8, 123.456, 123.456 + 0.00001, Expected, true);
 
-            // stack overflow
-
-            Test_NoLoad_Op(
-                Opcode::T::Test_g_I4, 0, 0, ExceptionState::T::StackOverflow,
-                StackState(true),
-                StackState(), StackState());
-            Test_NoLoad_Op(
-                Opcode::T::Test_g_I8, 0, 0, ExceptionState::T::StackOverflow,
-                StackState(true),
-                StackState(), StackState());
-            Test_NoLoad_Op(
-                Opcode::T::Test_g_F4, 0, 0, ExceptionState::T::StackOverflow,
-                StackState(true),
-                StackState(), StackState());
-            Test_NoLoad_Op(
-                Opcode::T::Test_g_F8, 0, 0, ExceptionState::T::StackOverflow,
+            // stack overflow test
+            std::vector<Opcode::T> TestOpList
+            {
+                Opcode::T::Test_g_I4,
+                Opcode::T::Test_g_I8,
+                Opcode::T::Test_g_F4,
+                Opcode::T::Test_g_F8,
+            };
+            Test_NoLoad_Op_Multiple(
+                TestOpList, 0, 0, ExceptionState::T::StackOverflow,
                 StackState(true),
                 StackState(), StackState());
         }
+
+        TEST_METHOD(Inst_Br)
+        {
+            std::vector<EmitInfo> EmitOpList;
+
+            // positive offset test
+            EmitOpList = std::vector<EmitInfo>
+            {
+                EmitInfo(false, Opcode::T::Nop),
+                EmitInfo(false, Opcode::T::Inv),
+                EmitInfo(true, Opcode::T::Bp),
+                EmitInfo(false, Opcode::T::Inv),
+            };
+
+            EmitOpList[0] = EmitInfo(false, Opcode::T::Br_I1, OperandHelper<uint8_t>(0x01));
+            Test_OpN(EmitOpList, 0, ExceptionState::T::Breakpoint,
+                StackState(), StackState(), StackState());
+
+            EmitOpList[0] = EmitInfo(false, Opcode::T::Br_I2, OperandHelper<uint16_t>(0x01));
+            Test_OpN(EmitOpList, 0, ExceptionState::T::Breakpoint,
+                StackState(), StackState(), StackState());
+
+            EmitOpList[0] = EmitInfo(false, Opcode::T::Br_I4, OperandHelper<uint32_t>(0x01));
+            Test_OpN(EmitOpList, 0, ExceptionState::T::Breakpoint,
+                StackState(), StackState(), StackState());
+
+
+            // negative offset test
+            EmitOpList = std::vector<EmitInfo>
+            {
+                EmitInfo(false, Opcode::T::Br_I1, OperandHelper<uint8_t>(0x03)),
+                EmitInfo(false, Opcode::T::Inv),
+                EmitInfo(true, Opcode::T::Bp), // <<<< 2nd branch target
+                EmitInfo(false, Opcode::T::Inv),
+                EmitInfo(false, Opcode::T::Nop), // <<<< 1st branch target
+                EmitInfo(false, Opcode::T::Inv),
+            };
+
+            const size_t BranchOpSize = 2;
+            size_t BranchOffset = 0;
+
+            BranchOffset = ~(BranchOpSize + sizeof(uint8_t) + 2) + 1;
+            EmitOpList[4] = EmitInfo(false, Opcode::T::Br_I1, OperandHelper(uint8_t(BranchOffset)));
+            Test_OpN(EmitOpList, 0, ExceptionState::T::Breakpoint,
+                StackState(), StackState(), StackState());
+
+            BranchOffset = ~(BranchOpSize + sizeof(uint16_t) + 2) + 1;
+            EmitOpList[4] = EmitInfo(false, Opcode::T::Br_I2, OperandHelper(uint16_t(BranchOffset)));
+            Test_OpN(EmitOpList, 0, ExceptionState::T::Breakpoint,
+                StackState(), StackState(), StackState());
+
+            BranchOffset = ~(BranchOpSize + sizeof(uint32_t) + 2) + 1;
+            EmitOpList[4] = EmitInfo(false, Opcode::T::Br_I4, OperandHelper(uint32_t(BranchOffset)));
+            Test_OpN(EmitOpList, 0, ExceptionState::T::Breakpoint,
+                StackState(), StackState(), StackState());
+
+
+            // invalid address test
+            EmitOpList = std::vector<EmitInfo>
+            {
+                EmitInfo(false, Opcode::T::Nop), // <<<< 1st branch target
+                EmitInfo(false, Opcode::T::Inv),
+                EmitInfo(false, Opcode::T::Inv),
+            };
+
+            EmitOpList[0] = EmitInfo(false, Opcode::T::Br_I4, OperandHelper<uint32_t>(0x80000000));
+            Test_OpN(EmitOpList, 0, ExceptionState::T::InvalidAccess,
+                StackState(), StackState(), StackState());
+        }
+
+        //Br_z_I1,
+        //Br_z_I2,
+        //Br_z_I4,
+        //Br_nz_I1,
+        //Br_nz_I2,
+        //Br_nz_I4,
+
+
 
     private:
         std::unique_ptr<VMMemoryManager> Memory_;
