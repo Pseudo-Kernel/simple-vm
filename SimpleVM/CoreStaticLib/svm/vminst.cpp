@@ -39,7 +39,7 @@ namespace VM_NAMESPACE
         return OperandCount_;
     }
 
-    uint8_t VMInstruction::Operand(int Index, uint8_t* Buffer, uint8_t Size)
+    uint8_t VMInstruction::Operand(int Index, unsigned char* Buffer, uint8_t Size)
     {
         DASSERT(Index == 0);
 
@@ -92,7 +92,7 @@ namespace VM_NAMESPACE
         return true;
     }
 
-    bool VMInstruction::SetOperand(uint8_t* ImmediateBytes, size_t ImmediateSize)
+    bool VMInstruction::SetOperand(unsigned char* ImmediateBytes, size_t ImmediateSize)
     {
         if (ImmediateSize == 0 ||
             ImmediateSize == 1 || ImmediateSize == 2 ||
@@ -261,7 +261,7 @@ namespace VM_NAMESPACE
         return true;
     }
 
-    size_t VMInstruction::Decode(uint8_t* Bytecode, size_t Size, VMInstruction* BytecodeOp)
+    size_t VMInstruction::Decode(unsigned char* Bytecode, size_t Size, VMInstruction* BytecodeOp)
     {
         auto p = Bytecode;
         size_t Remaining = Size;

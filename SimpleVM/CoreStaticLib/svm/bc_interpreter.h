@@ -47,8 +47,47 @@ namespace VM_NAMESPACE
             return sizeof(int32_t);
         }
 
+        static const char* ExceptionStateToDescription(ExceptionState::T State)
+        {
+            const char* Message = nullptr;
+            switch (State)
+            {
+            case ExceptionState::T::StackOverflow:
+                Message = "An attempt was made to access an invalid stack address.";
+                break;
+            case ExceptionState::T::InvalidInstruction:
+                Message = "An attempt was made to perform operation that is invalid.";
+                break;
+            case ExceptionState::T::InvalidAccess:
+                Message = "An attempt was made to access an invalid address.";
+                break;
+            case ExceptionState::T::IntegerDivideByZero:
+                Message = "An attempt was made to divide by zero in integer operation.";
+                break;
+            case ExceptionState::T::Breakpoint:
+                Message = "bp instruction was executed.";
+                break;
+            case ExceptionState::T::SingleStep:
+                Message = "single step exception was raised by the debugger.";
+                break;
+
+            case ExceptionState::T::FloatingPointInvalid:
+            case ExceptionState::T::IntegerOverflow:
+                DASSERT(false); // TBD
+                break;
+
+            case ExceptionState::T::FatalError:
+                Message = "unrecoverable fatal error.";
+                break;
+            }
+
+            return Message;
+        }
+
         static bool RaiseException(VMExecutionContext& Context, ExceptionState::T State)
         {
+            printf("Exception (0x%08x): %s\n", State, ExceptionStateToDescription(State));
+
             Context.ExceptionState = State;
             Context.NextIP = Context.IP;
             return true;
@@ -153,7 +192,7 @@ namespace VM_NAMESPACE
                     strcat_s(BytecodeDump, Value);
                 }
 
-                printf("%-30s%s\n", BytecodeDump, Mnemonic);
+                printf("%08x: %-30s%s\n", Context.IP, BytecodeDump, Mnemonic);
 #endif
 
                 bool Result = true;
@@ -1120,10 +1159,10 @@ namespace VM_NAMESPACE
 
                 if (Context.ExceptionState != ExceptionState::T::None)
                 {
-                    printf(" ==> Exception hit, ExceptionState = %d\n", Context.ExceptionState);
                     break;
                 }
 
+                Context.PrevIP = Context.IP;
                 Context.IP = Context.NextIP;
                 StepCount++;
             }
@@ -3079,7 +3118,7 @@ namespace VM_NAMESPACE
             typename = std::enable_if_t<std::is_integral<TOffset>::value>>
             inline static bool Inst_Br(TOffset Offset, VMExecutionContext& Context)
         {
-            auto RelativeOffset = Base::SignExtend<VMPointerType>(Offset);
+            VMPointerType RelativeOffset = Base::SignExtend<VMPointerType>(Offset);
 
             Context.NextIP += RelativeOffset;
 
@@ -3108,7 +3147,7 @@ namespace VM_NAMESPACE
             std::is_integral<TOffset>::value&& std::is_integral<TCondition>::value>>
             inline static bool Inst_Br_z(TOffset Offset, VMExecutionContext& Context)
         {
-            auto RelativeOffset = Base::SignExtend<VMPointerType>(Offset);
+            VMPointerType RelativeOffset = Base::SignExtend<VMPointerType>(Offset);
 
             TCondition Condition{};
             if (!Context.Stack.Pop(&Condition))
@@ -3147,7 +3186,7 @@ namespace VM_NAMESPACE
             std::is_integral<TOffset>::value&& std::is_integral<TCondition>::value>>
             inline static bool Inst_Br_nz(TOffset Offset, VMExecutionContext& Context)
         {
-            auto RelativeOffset = Base::SignExtend<VMPointerType>(Offset);
+            VMPointerType RelativeOffset = Base::SignExtend<VMPointerType>(Offset);
 
             TCondition Condition{};
             if (!Context.Stack.Pop(&Condition))
@@ -3169,7 +3208,7 @@ namespace VM_NAMESPACE
             typename = std::enable_if_t<std::is_integral<TOffset>::value>>
             inline static bool Inst_Call(TOffset Offset, VMExecutionContext& Context)
         {
-            auto RelativeOffset = Base::SignExtend<VMPointerType>(Offset);
+            VMPointerType RelativeOffset = Base::SignExtend<VMPointerType>(Offset);
 
             auto ReturnIP = Context.NextIP;
             if (!Context.Stack.Push(ReturnIP))

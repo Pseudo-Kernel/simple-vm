@@ -162,6 +162,7 @@ namespace VM_NAMESPACE
         // Temporary State.
         //
 
+        uint32_t PrevIP;                        // Previous IP
         uint32_t NextIP;						// Temporary IP
         uint32_t FetchedPrefix;                 // Fetched Prefix Bits. see InstructionPrefixBits::T.
 
