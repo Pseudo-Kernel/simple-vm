@@ -1076,6 +1076,12 @@ namespace VM_NAMESPACE
                     break;
                 }
 
+                case Opcode::T::Inv:
+                {
+                    Result = Inst_Inv(Context);
+                    break;
+                }
+
                 case Opcode::T::Ldvmsr:
                 {
                     uint16_t Operand1{};
@@ -3208,6 +3214,12 @@ namespace VM_NAMESPACE
 
             Context.NextIP = ReturnIP;
 
+            return true;
+        }
+
+        inline static bool Inst_Inv(VMExecutionContext& Context)
+        {
+            RaiseException(Context, ExceptionState::T::InvalidInstruction);
             return true;
         }
 

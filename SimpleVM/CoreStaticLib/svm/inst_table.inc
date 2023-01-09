@@ -135,7 +135,7 @@ DEFINE_INST		(Nop,			nop					)
  * bp - breakpoint
  *
  * expression:
- *     nop
+ *     bp
  * operation:
  *     RaiseException(#BP)
  * stack changes:
@@ -144,6 +144,20 @@ DEFINE_INST		(Nop,			nop					)
  *     #BP (breakpoint detected)
  */
 DEFINE_INST		(Bp,			bp					)
+
+/*
+ * inv - invalid instruction
+ *
+ * expression:
+ *     inv
+ * operation:
+ *     RaiseException(#INV)
+ * stack changes:
+ *     none
+ * exceptions:
+ *     #INV
+ */
+DEFINE_INST		(Inv,			inv					)
 
 /*
  * add.<type> - add two values

@@ -56,6 +56,8 @@ namespace VM_NAMESPACE
 			Nop,
 			Bp,
 
+			Inv,
+
 			Add_I4,
 			Add_I8,
 			Add_U4,
