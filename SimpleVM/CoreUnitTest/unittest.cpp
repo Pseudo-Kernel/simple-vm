@@ -940,6 +940,12 @@ namespace CoreUnitTest
             std::vector<uint64_t> Pushed;
         };
 
+        struct VerifyExcludeOptions
+        {
+            static constexpr const uint32_t ExcludeIP = 1 << 0;
+            static constexpr const uint32_t ExcludeStep = 1 << 1;
+        };
+
         static void OpenConsole()
         {
             for (int i = 0; i < 5; i++)
@@ -1165,7 +1171,7 @@ namespace CoreUnitTest
 
         void Test_OpN(
             const VMExecutionContext& InitialContext, VMExecutionContext& ResultContext,
-            std::vector<EmitInfo> EmitOp, uint32_t ExpectedOutputResultSize, ExceptionState::T ExpectedExceptionState,
+            std::vector<EmitInfo> EmitOp, uint32_t Options, ExceptionState::T ExpectedExceptionState,
             StackState ExpectedStackState, StackState ExpectedArgumentStackState,
             StackState ExpectedLocalVarStackState)
         {
@@ -1228,12 +1234,19 @@ namespace CoreUnitTest
             VMBytecodeInterpreter Interpreter(*Memory_.get());
             int ExecStepCount = Interpreter.Execute(Context, TotalEmitCount);
 
-            if (ExpectedExceptionState == ExceptionState::T::None)
+            if (!(Options & VerifyExcludeOptions::ExcludeStep))
             {
-                Assert::AreEqual(ExecStepCount, ExpectedStepCount, L"instruction end unreachable");
+                if (ExpectedExceptionState == ExceptionState::T::None)
+                {
+                    Assert::AreEqual(ExecStepCount, ExpectedStepCount, L"instruction end unreachable");
+                }
             }
 
-            Assert::AreEqual<size_t>(Context.IP, PrevIP + ExpectedIPOffset, L"IP mismatch");
+            if (!(Options & VerifyExcludeOptions::ExcludeIP))
+            {
+                Assert::AreEqual<size_t>(Context.IP, PrevIP + ExpectedIPOffset, L"IP mismatch");
+            }
+
             Assert::AreEqual<uint32_t>(Context.ExceptionState, ExpectedExceptionState, L"exception state mismatch");
 
             bool IsStackOper64 = VMBytecodeInterpreter::IsStackOper64Bit(Context);
@@ -1245,18 +1258,6 @@ namespace CoreUnitTest
                 std::make_tuple(PrevArgumentStackTop, &Context.ArgumentStack, &ExpectedArgumentStackState, L"argument stack"),
                 std::make_tuple(PrevLocalVarStackTop, &Context.LocalVariableStack, &ExpectedLocalVarStackState, L"localvar stack"),
             };
-
-            uint64_t OutputCompareMask = 0;
-            switch (ExpectedOutputResultSize)
-            {
-            case 0: break; // ignore
-            case 1: OutputCompareMask = 0xff; break;
-            case 2: OutputCompareMask = 0xffff; break;
-            case 4: OutputCompareMask = 0xffffffff; break;
-            case 8: OutputCompareMask = 0xffffffff'ffffffff; break;
-            default:
-                Assert::IsTrue(false, L"invalid parameter was specified");
-            }
 
             for (auto& it : StackTestList)
             {
@@ -1286,8 +1287,8 @@ namespace CoreUnitTest
                         // NOTE: this changes stack state
                         Assert::IsTrue(Stack->Pop(&Element));
                         Assert::AreEqual<TStackElement>(
-                            Element, //Element & OutputCompareMask,
-                            (*PushedElementsIt), //(*PushedElementsIt) & OutputCompareMask,
+                            Element,
+                            (*PushedElementsIt),
                             L"result mismatch");
                     }
 
@@ -1306,8 +1307,8 @@ namespace CoreUnitTest
                         // NOTE: this changes stack state
                         Assert::IsTrue(Stack->Pop(&Element));
                         Assert::AreEqual<TStackElement>(
-                            Element, //Element & OutputCompareMask, 
-                            static_cast<TStackElement>(*PushedElementsIt), //static_cast<TStackElement>(*PushedElementsIt) & OutputCompareMask, 
+                            Element,
+                            static_cast<TStackElement>(*PushedElementsIt),
                             L"result mismatch");
                     }
 
@@ -1322,12 +1323,12 @@ namespace CoreUnitTest
         }
 
         void Test_OpN(
-            std::vector<EmitInfo> EmitOp, uint32_t ExpectedOutputResultSize, ExceptionState::T ExpectedExceptionState,
+            std::vector<EmitInfo> EmitOp, uint32_t Options, ExceptionState::T ExpectedExceptionState,
             StackState ExpectedStackState, StackState ExpectedArgumentStackState,
             StackState ExpectedLocalVarStackState)
         {
             Test_OpN(ExecutionContextInitial_, ExecutionContext_,
-                EmitOp, ExpectedOutputResultSize, ExpectedExceptionState,
+                EmitOp, Options, ExpectedExceptionState,
                 ExpectedStackState, ExpectedArgumentStackState, ExpectedLocalVarStackState);
         }
 
@@ -1343,7 +1344,7 @@ namespace CoreUnitTest
                 std::vector<T> LoadValues, 
                 Opcode::T TestOp, 
                 U OperandValue1, 
-                uint32_t ExpectedOutputResultSize, 
+                uint32_t Options,
                 ExceptionState::T ExpectedExceptionState, 
                 StackState ExpectedStackState, 
                 StackState ExpectedArgumentStackState, 
@@ -1370,7 +1371,7 @@ namespace CoreUnitTest
             EmitInfos.push_back(
                 EmitInfo(ExpectedExceptionState != ExceptionState::T::None, TestOp, Operand1));
 
-            Test_OpN(InitialContext, ResultContext, EmitInfos, ExpectedOutputResultSize,
+            Test_OpN(InitialContext, ResultContext, EmitInfos, Options,
                 ExpectedExceptionState, ExpectedStackState, ExpectedArgumentStackState, ExpectedLocalVarStackState);
         }
 
@@ -1383,14 +1384,14 @@ namespace CoreUnitTest
                 std::vector<T> LoadValues,
                 Opcode::T TestOp,
                 U OperandValue1,
-                uint32_t ExpectedOutputResultSize,
+                uint32_t Options,
                 ExceptionState::T ExpectedExceptionState,
                 StackState ExpectedStackState,
                 StackState ExpectedArgumentStackState,
                 StackState ExpectedLocalVarStackState)
         {
             Test_LoadN_Op(ExecutionContextInitial_, ExecutionContext_,
-                LoadValues, TestOp, OperandValue1, ExpectedOutputResultSize, ExpectedExceptionState, 
+                LoadValues, TestOp, OperandValue1, Options, ExpectedExceptionState,
                 ExpectedStackState, ExpectedArgumentStackState, ExpectedLocalVarStackState);
         }
 
@@ -1509,7 +1510,7 @@ namespace CoreUnitTest
             typename = std::enable_if_t<std::is_integral<T>::value || std::is_floating_point<T>::value>>
             void Test_NoLoad_Op(
                 const VMExecutionContext& InitialContext, VMExecutionContext& ResultContext,
-                Opcode::T TestOp, T OperandValue1, uint32_t ExpectedOutputResultSize, 
+                Opcode::T TestOp, T OperandValue1, uint32_t Options,
                 ExceptionState::T ExpectedExceptionState,
                 StackState ExpectedStackState, StackState ExpectedArgumentStackState, 
                 StackState ExpectedLocalVarStackState)
@@ -1517,7 +1518,7 @@ namespace CoreUnitTest
             Test_LoadN_Op(
                 InitialContext, ResultContext,
                 std::vector<uint32_t> { },
-                TestOp, OperandValue1, ExpectedOutputResultSize, 
+                TestOp, OperandValue1, Options,
                 ExpectedExceptionState,
                 ExpectedStackState, // stack
                 ExpectedArgumentStackState, // argument stack
@@ -1528,7 +1529,7 @@ namespace CoreUnitTest
             typename T,
             typename = std::enable_if_t<std::is_integral<T>::value || std::is_floating_point<T>::value>>
             void Test_NoLoad_Op(
-                Opcode::T TestOp, T OperandValue1, uint32_t ExpectedOutputResultSize,
+                Opcode::T TestOp, T OperandValue1, uint32_t Options,
                 ExceptionState::T ExpectedExceptionState,
                 StackState ExpectedStackState, StackState ExpectedArgumentStackState,
                 StackState ExpectedLocalVarStackState)
@@ -1536,7 +1537,7 @@ namespace CoreUnitTest
             Test_LoadN_Op(
                 ExecutionContextInitial_, ExecutionContext_,
                 std::vector<uint32_t> { },
-                TestOp, OperandValue1, ExpectedOutputResultSize,
+                TestOp, OperandValue1, Options,
                 ExpectedExceptionState,
                 ExpectedStackState, // stack
                 ExpectedArgumentStackState, // argument stack
@@ -1547,7 +1548,7 @@ namespace CoreUnitTest
             typename T,
             typename = std::enable_if_t<std::is_integral<T>::value || std::is_floating_point<T>::value>>
             void Test_NoLoad_Op_Multiple(
-                std::vector<Opcode::T> TestOpList, T OperandValue1, uint32_t ExpectedOutputResultSize,
+                std::vector<Opcode::T> TestOpList, T OperandValue1, uint32_t Options,
                 ExceptionState::T ExpectedExceptionState,
                 StackState ExpectedStackState, StackState ExpectedArgumentStackState,
                 StackState ExpectedLocalVarStackState)
@@ -1555,7 +1556,7 @@ namespace CoreUnitTest
             for (auto TestOp : TestOpList)
             {
                 Test_NoLoad_Op(
-                    TestOp, OperandValue1, ExpectedOutputResultSize,
+                    TestOp, OperandValue1, Options,
                     ExpectedExceptionState,
                     ExpectedStackState, // stack
                     ExpectedArgumentStackState, // argument stack
@@ -2487,6 +2488,8 @@ namespace CoreUnitTest
 
 
             // invalid address test
+            VMExecutionContext InitialContext = ExecutionContextInitial_;
+            VMExecutionContext ReturnContext{};
             EmitOpList = std::vector<EmitInfo>
             {
                 EmitInfo(false, Opcode::T::Nop), // <<<< 1st branch target
@@ -2495,17 +2498,240 @@ namespace CoreUnitTest
             };
 
             EmitOpList[0] = EmitInfo(false, Opcode::T::Br_I4, OperandHelper<uint32_t>(0x80000000));
-            Test_OpN(EmitOpList, 0, ExceptionState::T::InvalidAccess,
+            Test_OpN(
+                InitialContext, ReturnContext, EmitOpList,
+                VerifyExcludeOptions::ExcludeIP | VerifyExcludeOptions::ExcludeStep,
+                ExceptionState::T::InvalidAccess,
                 StackState(), StackState(), StackState());
         }
 
-        //Br_z_I1,
-        //Br_z_I2,
-        //Br_z_I4,
-        //Br_nz_I1,
-        //Br_nz_I2,
-        //Br_nz_I4,
+        TEST_METHOD(Inst_Br_z)
+        {
+            std::vector<EmitInfo> EmitOpList;
 
+            // positive offset test
+            EmitOpList = std::vector<EmitInfo>
+            {
+                EmitInfo(false, Opcode::T::Ldimm_I1, OperandHelper<uint8_t>(0)),
+                EmitInfo(false, Opcode::T::Ldimm_I1, OperandHelper<uint8_t>(1)),
+                EmitInfo(false, Opcode::T::Nop),
+                EmitInfo(false, Opcode::T::Nop),
+                EmitInfo(false, Opcode::T::Inv),
+                EmitInfo(true, Opcode::T::Bp),
+                // 16-byte inv zone
+                EmitInfo(false, Opcode::T::Inv), // 0
+                EmitInfo(false, Opcode::T::Inv), // 1
+                EmitInfo(false, Opcode::T::Inv), // 2
+                EmitInfo(false, Opcode::T::Inv), // 3
+                EmitInfo(false, Opcode::T::Inv), // 4
+                EmitInfo(false, Opcode::T::Inv), // 5
+                EmitInfo(false, Opcode::T::Inv), // 6
+                EmitInfo(false, Opcode::T::Inv), // 7
+                EmitInfo(false, Opcode::T::Inv), // 8
+                EmitInfo(false, Opcode::T::Inv), // 9
+                EmitInfo(false, Opcode::T::Inv), // 10
+                EmitInfo(false, Opcode::T::Inv), // 11
+                EmitInfo(false, Opcode::T::Inv), // 12
+                EmitInfo(false, Opcode::T::Inv), // 13
+                EmitInfo(false, Opcode::T::Inv), // 14
+                EmitInfo(false, Opcode::T::Inv), // 15
+            };
+
+            EmitOpList[2] = EmitInfo(false, Opcode::T::Br_z_I1, OperandHelper<uint8_t>(0x01 + 8));
+            EmitOpList[3] = EmitInfo(false, Opcode::T::Br_z_I1, OperandHelper<uint8_t>(0x01));
+            Test_OpN(EmitOpList, 0, ExceptionState::T::Breakpoint,
+                StackState(), StackState(), StackState());
+
+            EmitOpList[2] = EmitInfo(false, Opcode::T::Br_z_I2, OperandHelper<uint16_t>(0x01 + 8));
+            EmitOpList[3] = EmitInfo(false, Opcode::T::Br_z_I2, OperandHelper<uint16_t>(0x01));
+            Test_OpN(EmitOpList, 0, ExceptionState::T::Breakpoint,
+                StackState(), StackState(), StackState());
+
+            EmitOpList[2] = EmitInfo(false, Opcode::T::Br_z_I4, OperandHelper<uint32_t>(0x01 + 8));
+            EmitOpList[3] = EmitInfo(false, Opcode::T::Br_z_I4, OperandHelper<uint32_t>(0x01));
+            Test_OpN(EmitOpList, 0, ExceptionState::T::Breakpoint,
+                StackState(), StackState(), StackState());
+
+
+            // negative offset test
+            EmitOpList = std::vector<EmitInfo>
+            {
+                EmitInfo(false, Opcode::T::Ldimm_I1, OperandHelper<uint8_t>(0)),
+                EmitInfo(false, Opcode::T::Br_I1, OperandHelper<uint8_t>(0x03)),
+                EmitInfo(false, Opcode::T::Inv),
+                EmitInfo(true, Opcode::T::Bp), // <<<< 2nd branch target
+                EmitInfo(false, Opcode::T::Inv),
+                EmitInfo(false, Opcode::T::Nop), // <<<< 1st branch target
+                // 16-byte inv zone
+                EmitInfo(false, Opcode::T::Inv), // 0
+                EmitInfo(false, Opcode::T::Inv), // 1
+                EmitInfo(false, Opcode::T::Inv), // 2
+                EmitInfo(false, Opcode::T::Inv), // 3
+                EmitInfo(false, Opcode::T::Inv), // 4
+                EmitInfo(false, Opcode::T::Inv), // 5
+                EmitInfo(false, Opcode::T::Inv), // 6
+                EmitInfo(false, Opcode::T::Inv), // 7
+                EmitInfo(false, Opcode::T::Inv), // 8
+                EmitInfo(false, Opcode::T::Inv), // 9
+                EmitInfo(false, Opcode::T::Inv), // 10
+                EmitInfo(false, Opcode::T::Inv), // 11
+                EmitInfo(false, Opcode::T::Inv), // 12
+                EmitInfo(false, Opcode::T::Inv), // 13
+                EmitInfo(false, Opcode::T::Inv), // 14
+                EmitInfo(false, Opcode::T::Inv), // 15
+            };
+
+            const size_t BranchOpSize = 2;
+            size_t BranchOffset = 0;
+
+            BranchOffset = ~(BranchOpSize + sizeof(uint8_t) + 2) + 1;
+            EmitOpList[5] = EmitInfo(false, Opcode::T::Br_z_I1, OperandHelper(uint8_t(BranchOffset)));
+            Test_OpN(EmitOpList, 0, ExceptionState::T::Breakpoint,
+                StackState(), StackState(), StackState());
+
+            BranchOffset = ~(BranchOpSize + sizeof(uint16_t) + 2) + 1;
+            EmitOpList[5] = EmitInfo(false, Opcode::T::Br_z_I2, OperandHelper(uint16_t(BranchOffset)));
+            Test_OpN(EmitOpList, 0, ExceptionState::T::Breakpoint,
+                StackState(), StackState(), StackState());
+
+            BranchOffset = ~(BranchOpSize + sizeof(uint32_t) + 2) + 1;
+            EmitOpList[5] = EmitInfo(false, Opcode::T::Br_z_I4, OperandHelper(uint32_t(BranchOffset)));
+            Test_OpN(EmitOpList, 0, ExceptionState::T::Breakpoint,
+                StackState(), StackState(), StackState());
+
+
+            // invalid address test
+            VMExecutionContext InitialContext = ExecutionContextInitial_;
+            VMExecutionContext ReturnContext{};
+            EmitOpList = std::vector<EmitInfo>
+            {
+                EmitInfo(false, Opcode::T::Ldimm_I1, OperandHelper<uint8_t>(0)),
+                EmitInfo(false, Opcode::T::Nop), // <<<< 1st branch target
+                EmitInfo(false, Opcode::T::Inv),
+                EmitInfo(false, Opcode::T::Inv),
+            };
+
+            EmitOpList[1] = EmitInfo(false, Opcode::T::Br_z_I4, OperandHelper<uint32_t>(0x80000000));
+            Test_OpN(
+                InitialContext, ReturnContext, EmitOpList,
+                VerifyExcludeOptions::ExcludeIP | VerifyExcludeOptions::ExcludeStep,
+                ExceptionState::T::InvalidAccess,
+                StackState(), StackState(), StackState());
+        }
+
+        TEST_METHOD(Inst_Br_nz)
+        {
+            std::vector<EmitInfo> EmitOpList;
+
+            // positive offset test
+            EmitOpList = std::vector<EmitInfo>
+            {
+                EmitInfo(false, Opcode::T::Ldimm_I1, OperandHelper<uint8_t>(1)),
+                EmitInfo(false, Opcode::T::Ldimm_I1, OperandHelper<uint8_t>(0)),
+                EmitInfo(false, Opcode::T::Nop),
+                EmitInfo(false, Opcode::T::Nop),
+                EmitInfo(false, Opcode::T::Inv),
+                EmitInfo(true, Opcode::T::Bp),
+                // 16-byte inv zone
+                EmitInfo(false, Opcode::T::Inv), // 0
+                EmitInfo(false, Opcode::T::Inv), // 1
+                EmitInfo(false, Opcode::T::Inv), // 2
+                EmitInfo(false, Opcode::T::Inv), // 3
+                EmitInfo(false, Opcode::T::Inv), // 4
+                EmitInfo(false, Opcode::T::Inv), // 5
+                EmitInfo(false, Opcode::T::Inv), // 6
+                EmitInfo(false, Opcode::T::Inv), // 7
+                EmitInfo(false, Opcode::T::Inv), // 8
+                EmitInfo(false, Opcode::T::Inv), // 9
+                EmitInfo(false, Opcode::T::Inv), // 10
+                EmitInfo(false, Opcode::T::Inv), // 11
+                EmitInfo(false, Opcode::T::Inv), // 12
+                EmitInfo(false, Opcode::T::Inv), // 13
+                EmitInfo(false, Opcode::T::Inv), // 14
+                EmitInfo(false, Opcode::T::Inv), // 15
+            };
+
+            EmitOpList[2] = EmitInfo(false, Opcode::T::Br_nz_I1, OperandHelper<uint8_t>(0x01 + 8));
+            EmitOpList[3] = EmitInfo(false, Opcode::T::Br_nz_I1, OperandHelper<uint8_t>(0x01));
+            Test_OpN(EmitOpList, 0, ExceptionState::T::Breakpoint,
+                StackState(), StackState(), StackState());
+
+            EmitOpList[2] = EmitInfo(false, Opcode::T::Br_nz_I2, OperandHelper<uint16_t>(0x01 + 8));
+            EmitOpList[3] = EmitInfo(false, Opcode::T::Br_nz_I2, OperandHelper<uint16_t>(0x01));
+            Test_OpN(EmitOpList, 0, ExceptionState::T::Breakpoint,
+                StackState(), StackState(), StackState());
+
+            EmitOpList[2] = EmitInfo(false, Opcode::T::Br_nz_I4, OperandHelper<uint32_t>(0x01 + 8));
+            EmitOpList[3] = EmitInfo(false, Opcode::T::Br_nz_I4, OperandHelper<uint32_t>(0x01));
+            Test_OpN(EmitOpList, 0, ExceptionState::T::Breakpoint,
+                StackState(), StackState(), StackState());
+
+
+            // negative offset test
+            EmitOpList = std::vector<EmitInfo>
+            {
+                EmitInfo(false, Opcode::T::Ldimm_I1, OperandHelper<uint8_t>(1)),
+                EmitInfo(false, Opcode::T::Br_I1, OperandHelper<uint8_t>(0x03)),
+                EmitInfo(false, Opcode::T::Inv),
+                EmitInfo(true, Opcode::T::Bp), // <<<< 2nd branch target
+                EmitInfo(false, Opcode::T::Inv),
+                EmitInfo(false, Opcode::T::Nop), // <<<< 1st branch target
+                // 16-byte inv zone
+                EmitInfo(false, Opcode::T::Inv), // 0
+                EmitInfo(false, Opcode::T::Inv), // 1
+                EmitInfo(false, Opcode::T::Inv), // 2
+                EmitInfo(false, Opcode::T::Inv), // 3
+                EmitInfo(false, Opcode::T::Inv), // 4
+                EmitInfo(false, Opcode::T::Inv), // 5
+                EmitInfo(false, Opcode::T::Inv), // 6
+                EmitInfo(false, Opcode::T::Inv), // 7
+                EmitInfo(false, Opcode::T::Inv), // 8
+                EmitInfo(false, Opcode::T::Inv), // 9
+                EmitInfo(false, Opcode::T::Inv), // 10
+                EmitInfo(false, Opcode::T::Inv), // 11
+                EmitInfo(false, Opcode::T::Inv), // 12
+                EmitInfo(false, Opcode::T::Inv), // 13
+                EmitInfo(false, Opcode::T::Inv), // 14
+                EmitInfo(false, Opcode::T::Inv), // 15
+            };
+
+            const size_t BranchOpSize = 2;
+            size_t BranchOffset = 0;
+
+            BranchOffset = ~(BranchOpSize + sizeof(uint8_t) + 2) + 1;
+            EmitOpList[5] = EmitInfo(false, Opcode::T::Br_nz_I1, OperandHelper(uint8_t(BranchOffset)));
+            Test_OpN(EmitOpList, 0, ExceptionState::T::Breakpoint,
+                StackState(), StackState(), StackState());
+
+            BranchOffset = ~(BranchOpSize + sizeof(uint16_t) + 2) + 1;
+            EmitOpList[5] = EmitInfo(false, Opcode::T::Br_nz_I2, OperandHelper(uint16_t(BranchOffset)));
+            Test_OpN(EmitOpList, 0, ExceptionState::T::Breakpoint,
+                StackState(), StackState(), StackState());
+
+            BranchOffset = ~(BranchOpSize + sizeof(uint32_t) + 2) + 1;
+            EmitOpList[5] = EmitInfo(false, Opcode::T::Br_nz_I4, OperandHelper(uint32_t(BranchOffset)));
+            Test_OpN(EmitOpList, 0, ExceptionState::T::Breakpoint,
+                StackState(), StackState(), StackState());
+
+
+            // invalid address test
+            VMExecutionContext InitialContext = ExecutionContextInitial_;
+            VMExecutionContext ReturnContext{};
+            EmitOpList = std::vector<EmitInfo>
+            {
+                EmitInfo(false, Opcode::T::Ldimm_I1, OperandHelper<uint8_t>(1)),
+                EmitInfo(false, Opcode::T::Nop), // <<<< 1st branch target
+                EmitInfo(false, Opcode::T::Inv),
+                EmitInfo(false, Opcode::T::Inv),
+            };
+
+            EmitOpList[1] = EmitInfo(false, Opcode::T::Br_nz_I4, OperandHelper<uint32_t>(0x80000000));
+            Test_OpN(
+                InitialContext, ReturnContext, EmitOpList,
+                VerifyExcludeOptions::ExcludeIP | VerifyExcludeOptions::ExcludeStep,
+                ExceptionState::T::InvalidAccess,
+                StackState(), StackState(), StackState());
+        }
 
 
     private:

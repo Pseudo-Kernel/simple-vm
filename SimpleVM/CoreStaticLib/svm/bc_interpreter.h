@@ -120,7 +120,7 @@ namespace VM_NAMESPACE
             size_t FetchSize = 0;
             int StepCount = 0;
 
-            printf(" =========== VM Execute (Step %10d) =========== \n", Count);
+            printf("[VM Execute, Step %d]\n", Count);
 
             //
             // Check stack alignment and operating mode.
@@ -1168,7 +1168,7 @@ namespace VM_NAMESPACE
             }
             while (FetchSize);
 
-            printf(" =========== VM Returned (Step %10d) =========== \n\n", StepCount);
+            printf(" ==> VM Returned, Step %d\n\n", StepCount);
 
             return StepCount;
         }
